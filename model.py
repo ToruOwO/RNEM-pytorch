@@ -1,17 +1,18 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
+from utils import ACTIVATION_FUNCTIONS
 
 
-class ReshapeModule(RNNCell):
+class ReshapeModule(nn.RNN):
 	def __init__(self, cell, shape, apply_to):
-		self.cell = cell
+		self.cell = nn.RNN(cell.input_size, cell.hidden_size)
 		self.shape = shape
 		self.apply_to = apply_to
-		self.state_size = cell.state_size
-		self.output_size = cell.output_size
 
-	def forward(self, x, state):
+	def __call__(self, x, state):
 		batch_size = x.size()[0]
 		if self.apply_to == "input":
 			if self.shape == -1:
@@ -22,7 +23,7 @@ class ReshapeModule(RNNCell):
 			return self.cell(x, state)
 
 		elif self.apply_to == "output":
-			x_out, res_state = self.cell(x, state)
+			x_out, next_state = self.cell(x, state)
 
 			if self.shape == -1:
 				x_out = x_out.view(batch_size, -1)
@@ -30,18 +31,67 @@ class ReshapeModule(RNNCell):
 				reshape_size = (batch_size,) + self.shape
 				x_out = x_out.view(reshape_size)
 
-			return x_out, res_state
+			return x_out, next_state
 
 		elif self.apply_to == "state":
-			x_out, res_state = self.cell(x, state)
+			x_out, next_state = self.cell(x, state)
 
 			if self.shape == -1:
-				res_state = res_state.view(batch_size, -1)
+				next_state = next_state.view(batch_size, -1)
 			else:
 				reshape_size = (batch_size,) + self.shape
-				res_state = res_state.view(reshape_size)
+				next_state = next_state.view(reshape_size)
 
-			return x_out, res_state
+			return x_out, next_state
+
+		else:
+			raise ValueError("Unknown apply_to: {}".format(self.apply_to))
+
+
+class ActivationFuncModule(nn.RNN):
+	def __init__(self, cell, activation="linear", apply_to="output"):
+		self.cell = nn.RNN(cell.input_size, cell.hidden_size)
+		self.activation = ACTIVATION_FUNCTIONS[activation]
+		self.apply_to = apply_to
+
+	def __call__(self, x, state):
+		if self.apply_to == "input":
+			x = self.activation(x)
+			return self.cell(x, state)
+
+		elif self.apply_to == "output":
+			x_out, next_state = self.cell(x, state)
+			x_out = self.activation(x_out)
+			return x_out, next_state
+
+		elif self.apply_to == "state":
+			x_out, next_state = self.cell(x, state)
+			next_state = self.activation(next_state)
+			return x_out, next_state
+
+		else:
+			raise ValueError("Unknown apply_to: {}".format(self.apply_to))
+
+
+class LayerNormModule(nn.RNN):
+	def __init__(self, cell, apply_to="output"):
+		self.cell = nn.RNN(cell.input_size, cell.hidden_size)
+		self.apply_to = apply_to
+
+	def __call__(self, x, state):
+		if self.apply_to == "input":
+			x = F.layer_norm(x)
+			return self.cell(x, state)
+
+		elif self.apply_to == "output":
+			x_out, next_state = self.cell(x, state)
+			x_out = F.layer_norm(x_out)
+			return x_out, next_state
+
+		elif self.apply_to == "state":
+			x_out, next_state = self.cell(x, state)
+			next_state = F.layer_norm(next_state)
+			return x_out, next_state
 
 		else:
 			raise ValueError("Unknown apply_to: {}".format(self.apply_to))
@@ -89,7 +139,7 @@ class InnerCAE(nn.Module):
 		raise NotImplementedError
 
 
-class NEMCell(nn.RNNCell):
+class NEMCell(nn.RNN):
 	def __init__(self, size, K):
 		self.encoder = nn.Sequential
 		self.core = 
