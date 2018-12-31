@@ -5,53 +5,45 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-# from sacred import Ingredient
+data_names = {'balls4mass64', 'balls678mass64', 'balls3curtain64', 'atari'}
+data_path = "./data"
+train_size = None
+valid_size = 1000
+test_size = None
 
-# ds = Ingredient('dataset')
-
-# @ds.config
-# def cfg():
-#     name = 'balls4mass64'
-#     path = './data'
-#     train_size = None           # subset of training set (None, int)
-#     valid_size = 1000           # subset of valid set (None, int)
-#     test_size = None            # subset of test set (None, int)
-#     queue_capacity = 100        # nr of batches in the queue
-
-# ds.add_named_config('balls4mass64', {'name': 'balls4mass64'})
-# ds.add_named_config('balls678mass64', {'name': 'balls678mass64'})
-# ds.add_named_config('balls3curtain64', {'name': 'balls3curtain64'})
-# ds.add_named_config('atari', {'name': 'atari'}) 
-
-def load_data(data_names, path):
-	f = h5py.File(path, 'r')
-	data = []
-	for i in range(len(data_names)):
-		d = np.array(f['training'][data_names[i]])
-		data.append(d)
+def load_data(file_path, phase, out_list):
+	f = h5py.File(file_path, 'r')
+	data = {}
+	for i in range(len(out_list)):
+		d = np.array(f[phase][out_list[i]])
+		data[out_list[i]] = d
 	f.close()
 	return data
 
 class PhyData(Dataset):
-	def __init__(self, data_path, phase, data_names):
-		self.data_path = data_path
+	def __init__(self, data_name, phase, out_list=('features', 'groups')):
+		if data_name not in data_names:
+			print("Dataset does not exist")
+
+		self.data_name = data_name
 		self.phase = phase
-		self.data_names = data_names
-		self.sequence_length = 10
+		self.out_list = out_list
 
 	def __len__(self):
 		return 51
 
 	def load_data(self):
-		self.data = load_data(self.data_names, self.data_path)
+		file_path = data_path + '/' + self.data_name + '.h5'
+		self.data = load_data(file_path, self.phase, self.out_list)
 
 	def __getitem__(self, index):
 		data_dict = {self.data[dn]: ds[:self.sequence_length, start_idx:start_idx + self.batch_size][:, :, None]
 			for dn, ds in self.data.items()}
 		return data_dict
 
-d = PhyData('data/balls3curtain64.h5', 'training', ['features'])
+d = PhyData('balls3curtain64', 'training', ['features'])
 d.load_data()
+print(d.data.size())
 # dataloader = DataLoader(d, batch_size=4, 
 # 						shuffle=False, num_workers=0)
 # for i, dd in enumerate(dataloader):
