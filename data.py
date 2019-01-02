@@ -44,6 +44,7 @@ class PhyData(Dataset):
 d = PhyData('balls3curtain64', 'training', ['features'])
 d.load_data()
 print(d.data.size())
+
 # dataloader = DataLoader(d, batch_size=4, 
 # 						shuffle=False, num_workers=0)
 # for i, dd in enumerate(dataloader):

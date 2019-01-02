@@ -109,8 +109,8 @@ class LayerNormWrapper(nn.RNN):
 
 
 class InputWrapper(nn.RNN):
-	def __init(self, input_size, hidden_size, output_size, fc_output_size=None):
-		super(LayerNormModule, self).__init__(input_size, hidden_size)
+	def __init__(self, input_size, hidden_size, output_size=None, fc_output_size=None):
+		super(InputWrapper, self).__init__(input_size, hidden_size)
 
 		if fc_output_size is None:
 			main_layer = nn.Conv2d(input_size[-1], output_size, kernel_size=4, stride=2)
@@ -121,6 +121,28 @@ class InputWrapper(nn.RNN):
 			ActivationFunctionWrapper(input_size, hidden_size, activation="elu", apply_to="input"),
 			LayerNormWrapper(input_size, hidden_size, apply_to="input"),
 			main_layer)
+
+	def forward(self, x):
+		return self.model(x)
+
+
+class OutputWrapper(nn.RNN):
+	def __init__(self, input_size, hidden_size, output_size=None, fc_output_size=None, activation="relu", layer_norm=True):
+		super(OutputWrapper, self).__init__(input_size, hidden_size)
+
+		modules = []
+
+		if fc_output_size is None:
+			modules.append(nn.Conv2d(input_size[-1], output_size, kernel_size=4, stride=2))
+		else:
+			modules.append(nn.Linear(input_size, fc_output_size))
+
+		if layer_norm is True:
+			modules.append(LayerNormWrapper(input_size, hidden_size, apply_to="output"))
+
+		modules.append(ActivationFunctionWrapper(input_size, hidden_size, activation=activation, apply_to="output"))
+
+		self.module = nn.Sequential(*modules)
 
 	def forward(self, x):
 		return self.model(x)
@@ -141,17 +163,17 @@ class EncoderLayer(nn.Module):
 		x = self.reshape1(x)
 
 		# normal convolution
-		self.conv1 = InputWrapper(x.input_size, x.hidden_size, 16)
+		self.conv1 = InputWrapper(x.input_size, x.hidden_size, output_size=16)
 		x = self.conv1(x)
 
-		self.conv2 = InputWrapper(x.input_size, x.hidden_size, 32)
+		self.conv2 = InputWrapper(x.input_size, x.hidden_size, output_size=32)
 		x = self.conv2(x)
 
-		self.conv3 = InputWrapper(x.input_size, x.hidden_size, 64)
+		self.conv3 = InputWrapper(x.input_size, x.hidden_size, output_size=64)
 		x = self.conv3(x)
 
 		# flatten input
-		self.reshape2 = ReshapeModule(x.input_size, state.hidden_size, shape=-1, apply_to="input")
+		self.reshape2 = ReshapeWrapper(x.input_size, state.hidden_size, shape=-1, apply_to="input")
 		x = self.reshape2(x)
 
 		# linear layer
@@ -164,9 +186,37 @@ class EncoderLayer(nn.Module):
 class DecoderLayer(nn.Module):
 	def __init__(self):
 		super(DecoderLayer, self).__init__()
+		self.fc1 = None
+		self.fc2 = None
+		self.reshape1 = None
+		self.r_conv1 = None
+		self.r_conv2 = None
+		self.r_conv3 = None
+		self.reshape2 = None
 
 	def forward(self, x):
-		raise NotImplementedError
+		self.fc1 = OutputWrapper(x.input_size, x.hidden_size, fc_output_size=512)
+		x = self.fc1(x)
+
+		self.fc2 = OutputWrapper(x.input_size, x.hidden_size, fc_output_size=8*8*64)
+		x = self.fc2(x)
+
+		self.reshape1 = ReshapeWrapper(x.input_size, x.hidden_size, shape=(8, 8, 64), apply_to="output")
+		x = self.reshape1(x)
+
+		self.r_conv1 = OutputWrapper(x.input_size, x.hidden_size, output_size=32)
+		x = self.r_conv1(x)
+
+		self.r_conv2 = OutputWrapper(x.input_size, x.hidden_size, output_size=16)
+		x = self.r_conv2(x)
+
+		self.r_conv3 = OutputWrapper(x.input_size, x.hidden_size, output_size=1, activation="sigmoid", layer_norm=False)
+		x = self.r_conv3(x)
+
+		self.reshape2 = ReshapeWrapper(x.input_size, x.hidden_size, shape=-1, apply_to="output")
+		x = self.reshape2(x)
+
+		return x
 
 
 class RecurrentLayer(nn.Module):
