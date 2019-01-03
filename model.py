@@ -184,9 +184,9 @@ class EncoderLayer(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-	def __init__(self):
+	def __init__(self, input_size, hidden_size):
 		super(DecoderLayer, self).__init__()
-		self.fc1 = None
+		self.fc1 = OutputWrapper(input_size, hidden_size, fc_output_size=512)
 		self.fc2 = None
 		self.reshape1 = None
 		self.r_conv1 = None
@@ -195,7 +195,6 @@ class DecoderLayer(nn.Module):
 		self.reshape2 = None
 
 	def forward(self, x):
-		self.fc1 = OutputWrapper(x.input_size, x.hidden_size, fc_output_size=512)
 		x = self.fc1(x)
 
 		self.fc2 = OutputWrapper(x.input_size, x.hidden_size, fc_output_size=8*8*64)
