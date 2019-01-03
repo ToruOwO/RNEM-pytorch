@@ -1,9 +1,11 @@
 import argparse
 import numpy as np
-import torch
 import utils
+import torch
+import torch.optim as optim
+import torch.distributions as dist
 
-from torch import distributions as dist
+from model import InnerConvAE
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -32,8 +34,51 @@ def add_noise(data, noise_type=None, noise_prob=0.2):
 		return corrupted
 
 
-def nem_iterations():
-	raise NotImplementedError
+def compute_bernoulli_prior():
+	"""
+	Compute Bernoulli prior over the input data with p = 0.0
+	"""
+	return torch.zeros(1, 1, 1, 1, 1)
+
+
+def nem_iterations(input_data, target_data, k, num_epochs, learning_rate=0.001):
+	# get input dimensions
+	input_shape = input_data.size()
+	assert input_shape[0] == 6, "Requires 6D input (T, B, K, W, H, C) but {}".format(input_shape[0])
+	W, H, C = (x for x in input_shape[-3:])
+
+	# set initial distribution (Bernoulli) of pixels
+	inner_model = InnerConvAE(K=k)
+	nem_model = NEMCell(inner_cell, input_shape=(W, H, C))
+
+	# compute Bernoulli prior
+	prior = compute_bernoulli_prior()
+
+	# use binomial cross entropy as intra loss
+	intra_criterion = nn.BCELoss()
+
+	# use KL divergence as inter loss
+	inter_criterion = nn.KLDivLoss()
+
+	# use Adam optimizer
+	optimizer = optim.Adam(nem_model.parameters(), lr=learning_rate)
+
+	for epoch in range(num_epochs):
+		# forward pass
+		outputs = nem_model(data)
+		total_loss = intra_criterion(outputs, labels) + inter_criterion(outputs, labels)
+
+		# backward pass and optimize
+		optimizer.zero_grad()
+		loss.backward()
+		optimizer.step()
+
+		# print log
+		if (i+1) % 100 == 0:
+            print ('Epoch [{}/{}], Loss: {:.4f}' 
+                   .format(epoch+1, num_epochs, loss.item()))
+
+		raise NotImplementedError
 
 
 def main(log_dir, nr_steps, lr):
