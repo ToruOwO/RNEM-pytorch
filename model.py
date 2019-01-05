@@ -148,6 +148,74 @@ class OutputWrapper(nn.RNN):
 		return self.model(x)
 
 
+class R_NEM(nn.RNN):
+	def __init__(self, K, size=250):
+		super(R_NEM, self).__init__(size, size)
+
+		self.encoder = nn.Sequential(
+			nn.Linear(size, 250),
+			nn.ReLU(),
+			nn.LayerNorm(250)
+		)
+		self.core = nn.Sequential(
+			nn.Linear(250, 250),
+			nn.ReLU(),
+			nn.LayerNorm(250)
+		)
+		self.context = nn.Sequential(
+			nn.Linear(250, 250),
+			nn.ReLU(),
+			nn.LayerNorm(250)
+		)
+		self.attention = nn.Sequential(
+			nn.Linear(250, 100),
+			nn.Tanh(),
+			nn.LayerNorm(250),
+			nn.Linear(100, 1),
+			nn.Sigmoid()
+		)
+
+		assert K > 1
+		self.K = K
+
+	def get_shapes(self, x):
+		bk = x.size()[0]
+		m = x.size()[1]
+		return bk // self.K, self.K, m
+
+	def forward(self, x, state):
+		"""
+        input: [B X K, M]
+        state: [B x K, H]
+
+        b: batch_size
+        k: num_groups
+        m: input_size
+        h: hidden_size
+        h1: size of the encoding of focus and context
+        h2: size of effect
+        o: size of output
+
+        # 0. Encode with RNN: x is [B*K, M], h is [B*K, H] --> both are [B*K, H]
+        # 1. Reshape both to [B, K, H]
+        # 2. For each of the k in K copies, extract the K-1 states that are not that k
+        # 3. Now you have two tensors of size [B x K x K-1, H]
+        #     The first: "focus object": K-1 copies of the state of "k", the focus object
+        #     The second: "context objects": K-1 (all unique) states of the context objects
+        # 4. Concatenate results of 3
+        # 5. Core: Process result of 4 in a feedforward network --> [B x K, H'']
+        # 6. Reshape to [B x K, K-1, H''] to isolate the K-1 dimension (because we did for K-1 pairs)
+        # 7. Sum in the K-1 dimension --> [B x K, H'']
+        #   7.5 weighted by attention
+        # 8. Decoder: Concatenate result of 7, the original theta, and the x and process into new state --> [B x K, H]
+        # 9. Actions: Optionally embed actions into some representation
+
+        """
+        b, k, m = self.get_shapes(x)
+
+        x, state = self.rnn(x, state)
+
+
 class EncoderLayer(nn.Module):
 	def __init__(self, input_size, hidden_size):
 		super(EncoderLayer, self).__init__()
@@ -219,11 +287,26 @@ class DecoderLayer(nn.Module):
 
 
 class RecurrentLayer(nn.Module):
-	def __init__(self):
+	def __init__(self, K):
 		super(RecurrentLayer, self).__init__()
+		self.r_nem = R_NEM(K)
+		self.layer_norm = None
+		self.act1 = None
+		self.act2 = None
 
 	def forward(self, x):
-		raise NotImplementedError
+		x = self.r_nem(x)
+
+		self.layer_norm = LayerNormWrapper(x.input_size, x.output_size, apply_to="output")
+		x = self.layer_norm(x)
+
+		self.act1 = ActivationFunctionWrapper(x.input_size, x.output_size, activation="sigmoid", apply_to="state")
+		x = self.act1(x)
+
+		self.act2 = ActivationFunctionWrapper(x.input_size, x.output_size, activation="sigmoid", apply_to="output")
+		x = self.act2(x)
+
+		return x
 
 
 class InnerConvAE(nn.RNN):
