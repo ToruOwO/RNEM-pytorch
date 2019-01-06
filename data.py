@@ -20,7 +20,7 @@ def load_data(file_path, phase, out_list):
 	f.close()
 	return data
 
-class PhyData(Dataset):
+class Data(Dataset):
 	def __init__(self, data_name, phase, out_list=('features', 'groups')):
 		if data_name not in data_names:
 			print("Dataset does not exist")
@@ -33,7 +33,7 @@ class PhyData(Dataset):
 		return 51
 
 	def load_data(self):
-		file_path = data_path + '/' + self.data_name + '.h5'
+		file_path = os.path.join(data_path, '/', self.data_name, '.h5')
 		self.data = load_data(file_path, self.phase, self.out_list)
 
 	def __getitem__(self, index):
@@ -41,7 +41,7 @@ class PhyData(Dataset):
 			for dn, ds in self.data.items()}
 		return data_dict
 
-d = PhyData('balls3curtain64', 'training', ['features'])
+d = Data('balls3curtain64', 'training', ['features'])
 d.load_data()
 print(d.data.size())
 
