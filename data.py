@@ -43,19 +43,35 @@ class Data(Dataset):
 
 		keys (str): attribute
 		values (h5py.Dataset): HDH5 Dataset
+
+		Shape of data: (T, B, K, W, H, C)
+		T - sequence length
+		B - batch size
+		K - group size (default=1)
+		W - width
+		H - height
+		C - number of channels
 		"""
 		print("Loading data from file ...")
 		file_path = os.path.join(data_path, self.data_name + '.h5')
 		f = h5py.File(file_path, 'r')
 
+		dataset = {}
+
 		# TODO: read-in large amount of data in parallel using batch
 		# Warning: H5PY might not work with PyTorch Dataloader
-		dataset = {attr: f[self.phase][attr][:, :batch_size, :, :, :] for attr in self.attribute_list}
+		for attr in self.attribute_list:
+			# shape of data is (T, B, K, W, H, C)
+			data_shape = (self.sequence_length, batch_size, 1) + f[self.phase][attr].shape[2:]
+			self.data_shapes[attr] = data_shape
 
-		for k, v in dataset.items():
-			self.data_shapes[k] = v.shape
-			# print(k)
-			# print(v.shape, type(v))
+			# reshape data accordingly
+			data = f[self.phase][attr][:self.sequence_length, :batch_size, :, :, :]
+			data = np.reshape(data, data_shape)
+			# print(data.shape)
+			dataset[attr] = data
+
+		# print(self.data_shapes)
 
 		# remember to close file
 		f.close()
@@ -68,7 +84,7 @@ class Data(Dataset):
 		item = {}
 
 		for attr in self.attribute_list:
-			d = self.dataset[attr][:, idx, :, :, :]
+			d = self.dataset[attr][:, idx, :, :, :, :]
 
 			# convert data to PyTorch tensor
 			t = torch.Tensor(d.astype(float))
@@ -82,9 +98,9 @@ class Data(Dataset):
 			return v[1]
 
 
-d = Data('balls3curtain64', 'training', ['features'])
-print("Number of sequences in dataset:", len(d))
-print("Torch size of each sequence:", d[0]['feature'].shape)
+train_data = Data('balls3curtain64', 'training')
+print("Number of sequences in training data:", len(train_data))
+print("Torch size of each sequence:", train_data[0]['features'].shape)
 
 # dataloader = DataLoader(d, batch_size=batch_size, 
 # 						shuffle=False, num_workers=0)

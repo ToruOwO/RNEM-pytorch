@@ -81,16 +81,16 @@ def nem_iterations(input_data, target_data, k, num_epochs, learning_rate=0.001):
 		raise NotImplementedError
 
 
-def main(log_dir, nr_steps, lr):
+def main(data_name, log_dir, nr_steps, lr):
 	if log_dir is None:
 		utils.create_directory(log_dir)
 		utils.clear_directory(log_dir)
 
-	# set up data
-	out_list = ['features', 'groups', 'collisions']
+	# set up input data
+	attribute_list = ['features', 'groups']
 
-	train_inputs = PhysData(out_list=out_list)
-	valid_inputs = PhysData(out_list=out_list)
+	train_inputs = Data(data_name, 'training', attribute_list=attribute_list)
+	valid_inputs = Data(data_name, 'validation', attribute_list=attribute_list)
 
 	# build model
 	# train_op, train_graph, valid_graph, debug_graph = build_graphs(train_inputs.output, valid_inputs.output)
@@ -110,6 +110,7 @@ if __name__ == '__main__':
     parser.add_argument('--max_size', type=int, default=400)
     parser.add_argument('--nr_steps', type=int, default=100)
     parser.add_argument('--lr', type=float, default=0.001)
+    parameters.add_argument('--data_name' type=str, default='balls3curtain64')
     config = parser.parse_args()
     print(config)
-	main(config.log_dir, config.nr_steps, config.lr)
+	main(config.data_name, config.log_dir, config.nr_steps, config.lr)
