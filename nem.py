@@ -2,6 +2,7 @@ import argparse
 import numpy as np
 import utils
 import torch
+import torch.nn as nn
 import torch.optim as optim
 import torch.distributions as dist
 
@@ -9,6 +10,11 @@ from model import InnerConvAE
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+class NEM(nn.RNN):
+	def __init__(self):
+		raise NotImplementedError
 
 
 def add_noise(data, noise_type=None, noise_prob=0.2):
@@ -41,7 +47,7 @@ def compute_bernoulli_prior():
 	return torch.zeros(1, 1, 1, 1, 1)
 
 
-def nem_iterations(input_data, target_data, k, num_epochs, learning_rate=0.001):
+def nem_iterations(input_data, target_data, k=5, num_epochs=, learning_rate=0.001):
 	# get input dimensions
 	input_shape = input_data.size()
 	assert input_shape[0] == 6, "Requires 6D input (T, B, K, W, H, C) but {}".format(input_shape[0])
@@ -93,13 +99,14 @@ def main(data_name, log_dir, nr_steps, lr):
 	valid_inputs = Data(data_name, 'validation', attribute_list=attribute_list)
 
 	# build model
+	model = InnerConvAE()
+
 	# train_op, train_graph, valid_graph, debug_graph = build_graphs(train_inputs.output, valid_inputs.output)
 
 	# training
 	features_corrupted = add_noise(train_inputs['features'])
 	loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, r_other_losses, \
-    r_other_ub_losses = static_nem_iterations(features_corrupted, features,
-                                              collisions=collisions, actions=actions)
+    r_other_ub_losses = nem_iterations(features_corrupted, features)
 
 
 if __name__ == '__main__':
@@ -110,7 +117,8 @@ if __name__ == '__main__':
     parser.add_argument('--max_size', type=int, default=400)
     parser.add_argument('--nr_steps', type=int, default=100)
     parser.add_argument('--lr', type=float, default=0.001)
-    parameters.add_argument('--data_name' type=str, default='balls3curtain64')
+    parser.add_argument('--data_name' type=str, default='balls3curtain64')
+
     config = parser.parse_args()
     print(config)
 	main(config.data_name, config.log_dir, config.nr_steps, config.lr)

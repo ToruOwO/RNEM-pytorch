@@ -310,11 +310,11 @@ class RecurrentLayer(nn.Module):
 
 
 class InnerConvAE(nn.RNN):
-	def __init__(self, input_cell):
-		super(InnerCAE, self).__init__(input_cell.input_size, input_cell.hidden_size)
-		self.encoder = EncoderLayer()
-		self.recurrent = RecurrentLayer()
-		self.decoder = DecoderLayer()
+	def __init__(self, input_size, hidden_size, K):
+		super(InnerCAE, self).__init__(input_size, hidden_size)
+		self.encoder = EncoderLayer(input_size, hidden_size)
+		self.recurrent = RecurrentLayer(K)
+		self.decoder = DecoderLayer(input_size, hidden_size)
 
 	def forward(self, x):
 		raise NotImplementedError
