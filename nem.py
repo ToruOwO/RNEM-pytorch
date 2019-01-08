@@ -13,8 +13,96 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class NEM(nn.RNN):
-	def __init__(self):
-		raise NotImplementedError
+	def __init__(self, input_size, hidden_size, output_size):
+		gamma_size = input_size[:-1] + (1,)
+		rnn_input_size = (hidden_size, input_size, gamma_size)
+		rnn_hidden_size = (output_size, input_size, gamma_size)
+
+		super(ReshapeWrapper, self).__init__(rnn_input_size, rnn_hidden_size)
+
+		self.input_size = input_size
+		self.gamma_size = gamma_size
+
+	@staticmethod
+	def delta_predictions(predicitons, data):
+		"""
+		Compute the derivative of the prediction wrt. to the loss.
+		For binary and real with just μ this reduces to (predictions - data).
+
+		:param predictions: (B, K, W, H, C)
+		Note: This is a list to later support getting both μ and σ.
+		:param data: (B, 1, W, H, C)
+
+		:return: deltas (B, K, W, H, C)
+		"""
+		return data - predictions
+
+	@staticmethod
+	def mask_rnn_inputs(rnn_inputs, gamma):
+		"""
+		Mask the deltas (inputs to RNN) by gamma.
+        :param rnn_inputs: (B, K, W, H, C)
+            Note: This is a list to later support multiple inputs
+        :param gamma: (B, K, W, H, 1)
+
+        :return: masked deltas (B, K, W, H, C)
+		"""
+		with torch.no_grad():
+			return rnn_inputs * gamma
+
+	def run_inner_rnn(self, masked_deltas, h_old):
+		d_size = masked_deltas.size()
+		batch_size = d_size[0]
+		K = d_size[1]
+		M = torch.tensor(self.input_size).prod()
+		reshaped_masked_deltas = masked_deltas.view(torch.stack([batch_size * K, M]))
+
+		preds, h_new = self.forward(reshaped_masked_deltas, h_old)
+
+		return preds.view(d_size), h_new
+
+	def compute_em_probabilities(self, predictions, data, epsilon=1e-6):
+		"""
+		Compute pixelwise loss of predictions (wrt. the data).
+
+        :param predictions: (B, K, W, H, C)
+        :param data: (B, 1, W, H, C)
+        :return: local loss (B, K, W, H, 1)
+		"""
+		loss = data * predictions + (1 - data) * (1 - predictions)
+		if epsilon > 0:
+			loss += epsilon
+		return loss
+
+	def e_step(self, predictions, targets):
+		probs = self.compute_em_probabilities(predictions, targets)
+
+		# compute the new gamma (E-step)
+		gamma = probs / probs.sum(dim=1, keepdim=True)
+
+		return gamma
+
+	def __call__(self, x, state):
+		# unpack values
+		input_data, target_data = x
+		h_old, preds_old, gamma_old = state
+
+		# compute differences between prediction and input
+		deltas = self.delta_predictions(preds_old, input_data)
+
+		# mask with gamma
+		masked_deltas = self.mask_rnn_inputs(deltas, gamma_old)
+
+		# compute new predictions
+		preds, h_new = self.run_inner_rnn(masked_deltas, h_old)
+
+		# compute the new gammas
+		gamma = self.e_step(preds, target_data)
+
+		# pack and return
+		outputs = (h_new, preds, gamma)
+
+		return outputs, outputs
 
 
 def add_noise(data, noise_type=None, noise_prob=0.2):
