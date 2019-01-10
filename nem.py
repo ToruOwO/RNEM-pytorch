@@ -23,6 +23,23 @@ class NEM(nn.RNN):
 		self.input_size = input_size
 		self.gamma_size = gamma_size
 
+	def init_state(self, batch_size, K, dtype=torch.float):
+		h = torch.zeros(batch_size*K, *self.hidden_size, dtype=dtype)
+
+		pred = torch.zeros(batch_size, K, *self.input_size, dtype=dtype)
+
+		# initialize with Gaussian distribution
+		gamma_shape = [batch_size, K] + list(self.gamma_size)
+		gamma = np.absolute(np.random.normal(size=gamma_shape))
+		gamma = torch.from_numpy(gamma)
+		gamma = torch.sum(gamma, dim=1, keepdim=True)
+
+		# init with all 1 if K = 1
+		if K == 1:
+			gamma = torch.ones_like(gamma)
+
+		return h, pred, gamma
+
 	@staticmethod
 	def delta_predictions(predicitons, data):
 		"""
@@ -143,7 +160,7 @@ def nem_iterations(input_data, target_data, learning_rate=0.001, num_epochs=500,
 
 	# set initial distribution (Bernoulli) of pixels
 	inner_model = InnerConvAE(K=k)
-	nem_model = NEMCell(inner_cell, input_shape=(W, H, C))
+	nem_model = NEM(inner_model, input_size=(W, H, C), inner_model.hidden_size, inner_model.input_size)
 
 	# compute Bernoulli prior
 	prior = compute_bernoulli_prior()
@@ -157,7 +174,19 @@ def nem_iterations(input_data, target_data, learning_rate=0.001, num_epochs=500,
 	# use Adam optimizer
 	optimizer = optim.Adam(nem_model.parameters(), lr=learning_rate)
 
-	best_valid_loss = np.inf
+	# outputs
+	hidden_state = nem_model.init_state(input_shape[1], k)
+
+	# record losses
+	total_losses = []
+	total_ub_losses = []
+	r_total_losses = []
+	r_total_ub_losses = []
+	other_losses = []
+	other_ub_losses = []
+	r_other_losses = []
+	r_other_ub_losses = []
+
 	for epoch in range(num_epochs):
 		if is_training:
 			model.train()
@@ -184,6 +213,12 @@ def nem_iterations(input_data, target_data, learning_rate=0.001, num_epochs=500,
 		losses /= len(input_data)
 		print('%s [%d/%d] Loss: %.4f, Best valid: %.4f' %
               (phase, epoch, args.n_epoch, losses, best_valid_loss))
+
+	thetas, preds, gammas = zip(*outputs)
+	thetas
+
+	return loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
+		 r_other_losses, r_other_ub_losses
 
 
 def main(data_name, log_dir, nr_steps, batch_size, lr, max_epoch, noise_type='bitflip'):
