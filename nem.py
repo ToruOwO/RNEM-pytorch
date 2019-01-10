@@ -135,7 +135,7 @@ def compute_bernoulli_prior():
 	return torch.zeros(1, 1, 1, 1, 1)
 
 
-def nem_iterations(input_data, target_data, k=5, num_epochs=, learning_rate=0.001):
+def nem_iterations(input_data, target_data, learning_rate=0.001, num_epochs=500, k=5, is_training=True):
 	# get input dimensions
 	input_shape = input_data.size()
 	assert input_shape[0] == 6, "Requires 6D input (T, B, K, W, H, C) but {}".format(input_shape[0])
@@ -157,25 +157,36 @@ def nem_iterations(input_data, target_data, k=5, num_epochs=, learning_rate=0.00
 	# use Adam optimizer
 	optimizer = optim.Adam(nem_model.parameters(), lr=learning_rate)
 
+	best_valid_loss = np.inf
 	for epoch in range(num_epochs):
-		# forward pass
-		outputs = nem_model(data)
-		total_loss = intra_criterion(outputs, labels) + inter_criterion(outputs, labels)
+		if is_training:
+			model.train()
 
-		# backward pass and optimize
-		optimizer.zero_grad()
-		loss.backward()
-		optimizer.step()
+		losses = 0.
 
-		# print log
-		if (i+1) % 100 == 0:
-            print ('Epoch [{}/{}], Loss: {:.4f}' 
-                   .format(epoch+1, num_epochs, loss.item()))
+		for i, data in enumerate(input_data):
 
-		raise NotImplementedError
+			# forward pass
+			outputs = nem_model(data)
+			total_loss = intra_criterion(outputs, labels) + inter_criterion(outputs, labels)
+			losses += total_loss
+
+			# backward pass and optimize
+			optimizer.zero_grad()
+			loss.backward()
+			optimizer.step()
+
+			# print log
+			if (i+1) % 100 == 0:
+	            print ('Epoch [{}/{}], Loss: {:.4f}' 
+	                   .format(epoch+1, num_epochs, loss.item()))
+
+		losses /= len(input_data)
+		print('%s [%d/%d] Loss: %.4f, Best valid: %.4f' %
+              (phase, epoch, args.n_epoch, losses, best_valid_loss))
 
 
-def main(data_name, log_dir, nr_steps, lr):
+def main(data_name, log_dir, nr_steps, batch_size, lr, max_epoch, noise_type='bitflip'):
 	if log_dir is None:
 		utils.create_directory(log_dir)
 		utils.clear_directory(log_dir)
@@ -189,24 +200,21 @@ def main(data_name, log_dir, nr_steps, lr):
 	# build model
 	model = InnerConvAE()
 
-	# train_op, train_graph, valid_graph, debug_graph = build_graphs(train_inputs.output, valid_inputs.output)
-
 	# training
-	features_corrupted = add_noise(train_inputs['features'])
+	features_corrupted = add_noise(train_inputs['features'], noise_type=noise_type)
 	loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, r_other_losses, \
-    r_other_ub_losses = nem_iterations(features_corrupted, features)
+    r_other_ub_losses = nem_iterations(features_corrupted, features, learning_rate=lr, num_epochs=max_epoch)
 
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
+	parser.add_argument('--data_name' type=str, default='balls3curtain64')
 	parser.add_argument('--log_dir', type=str, default='./debug')
-    parser.add_argument('--noise_type', type=str, default='bitflip')
-    parser.add_argument('--noise_prob', type=float, default=0.2)
-    parser.add_argument('--max_size', type=int, default=400)
-    parser.add_argument('--nr_steps', type=int, default=100)
+	parser.add_argument('--nr_steps', type=int, default=100)
+	parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--lr', type=float, default=0.001)
-    parser.add_argument('--data_name' type=str, default='balls3curtain64')
+    parser.add_argument('--max_epoch', type=int, default=500)
 
     config = parser.parse_args()
     print(config)
-	main(config.data_name, config.log_dir, config.nr_steps, config.lr)
+	main(config.data_name, config.log_dir, config.nr_steps, config.batch_size, config.lr, config.max_epoch)
