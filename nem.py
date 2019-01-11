@@ -152,15 +152,59 @@ def compute_bernoulli_prior():
 	return torch.zeros(1, 1, 1, 1, 1)
 
 
-def compute_outer_loss(mu, gamma, target, prior, loss_inter_weigh=1.0):
-	raise NotImplementedError
+def compute_outer_loss(mu, gamma, target, prior, collision):
+	# use binomial cross entropy as intra loss
+	intra_criterion = nn.BCELoss()
+
+	# use KL divergence as inter loss
+	inter_criterion = nn.KLDivLoss()
+
+	intra_loss = intra_criterion(mu, target)
+	inter_loss = inter_criterion(prior, mu)
+
+	batch_size = target.size()[0]
+
+	# compute rel losses
+	r_intra_loss = torch.sum(collision * intra_loss * gamma.detach()) / batch_size
+	r_inter_loss = torch.sum(collision * inter_loss * (1. - gamma.detach())) / batch_size
+
+	# compute normal losses
+	intra_loss = torch.sum(intra_loss * gamma.detach()) / batch_size
+	inter_loss = torch.sum(inter_loss * (1.0 - gamma.detach())) / batch_size
+
+	total_loss = intra_loss + inter_loss
+	r_total_loss = r_intra_loss + r_inter_loss
+
+	return total_loss, intra_loss, inter_loss, r_total_loss, r_intra_loss, r_inter_loss
 
 
-def compute_outer_ub_loss(pred, target, prior, loss_inter_weight=1.0):
-	raise NotImplementedError
+def compute_outer_ub_loss(pred, target, prior, collision):
+	max_pred = torch.max(pred, dim=1, keepdim=True)
+
+	# use binomial cross entropy as intra loss
+	intra_criterion = nn.BCELoss()
+
+	# use KL divergence as inter loss
+	inter_criterion = nn.KLDivLoss()
+
+	intra_ub_loss = intra_criterion(max_pred, target)
+	inter_ub_loss = inter_criterion(prior, max_pred)
+
+	batch_size = target.size()[0]
+
+	r_intra_ub_loss = torch.sum(collision * intra_ub_loss) / batch_size
+	r_inter_ub_loss = torch.sum(collision * inter_ub_loss) / batch_size
+
+	intra_ub_loss = torch.sum(intra_ub_loss) / batch_size
+	inter_ub_loss = torch.sum(inter_ub_loss) / batch_size
+
+	total_ub_loss = intra_ub_loss + inter_ub_loss
+	r_total_ub_loss = r_intra_ub_loss + r_inter_ub_loss
+
+	return total_ub_loss, intra_ub_loss, inter_ub_loss, r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss
 
 
-def nem_iterations(input_data, target_data, learning_rate=0.001, nr_steps=30, num_epochs=500, k=5, is_training=True):
+def nem_iterations(input_data, target_data, collisions=None, learning_rate=0.001, nr_steps=30, num_epochs=500, k=5, is_training=True):
 	# get input dimensions
 	input_shape = input_data.size()
 	assert input_shape[0] == 6, "Requires 6D input (T, B, K, W, H, C) but {}".format(input_shape[0])
@@ -211,13 +255,15 @@ def nem_iterations(input_data, target_data, learning_rate=0.001, nr_steps=30, nu
 			hidden_state, output = nem_model(inputs, hidden_state)
 			theta, pred, gamma = output
 
+			# use collision data
+			collision = torch.zeros(1, 1, 1, 1, 1) if collisions is None else collisions[t]
+
 			# compute NEM losses
 			total_loss, intra_loss, inter_loss, r_total_loss, r_intra_loss, r_inter_loss \
-				= compute_outer_loss(pred, gamma, target_data[t+1], prior)
+				= compute_outer_loss(pred, gamma, target_data[t+1], prior, collision=collision)
 
 			total_ub_loss, intra_ub_loss, inter_ub_loss, r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss \
-				= compute_outer_ub_loss(pred, target_data[t+1], prior)
-
+				= compute_outer_ub_loss(pred, target_data[t+1], prior, collision=collision)
 
 			total_loss = intra_criterion(output, labels) + inter_criterion(output, labels)
 			losses += total_loss
@@ -277,6 +323,7 @@ def main(data_name, log_dir, nr_steps, batch_size, lr, max_epoch, noise_type='bi
 	loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
 	r_other_losses, r_other_ub_losses = nem_iterations(features_corrupted, 
 												    	features, 
+												    	collision=train_inputs.get('collisions', None),
 												    	learning_rate=lr, 
 												    	nr_steps=nr_steps, 
 												    	num_epochs=max_epoch)
