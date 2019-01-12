@@ -1,5 +1,6 @@
 import argparse
 import numpy as np
+import os
 import utils
 import torch
 import torch.nn as nn
@@ -202,21 +203,53 @@ def main():
 		utils.clear_directory(log_dir)
 
 	# set up input data
-	attribute_list = ['features', 'groups']
+	attribute_list = ('features', 'groups')
+	nr_iters = args.nr_steps + 1
 
-	train_inputs = Data(args.data_name, 'training', attribute_list=attribute_list)
-	valid_inputs = Data(args.data_name, 'validation', attribute_list=attribute_list)
+	train_inputs = Data(args.data_name, 'training', sequence_length=nr_iters, attribute_list=attribute_list)
+	valid_inputs = Data(args.data_name, 'validation', sequence_length=nr_iters, attribute_list=attribute_list)
 
 	# build model
 	model = InnerConvAE()
 
 	# training
-	features_corrupted = add_noise(train_inputs['features'], noise_type=args.noise_type)
+	best_valid_loss = np.inf
+	best_valid_epoch = 0
 
-	loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
-	r_other_losses, r_other_ub_losses = nem_iterations(features_corrupted, 
-												    	features, 
-												    	collision=train_inputs.get('collisions', None))
+	for epoch in range(1, args.max_epoch + 1):
+		# training phase
+		features_corrupted = add_noise(train_inputs['features'], noise_type=args.noise_type)
+		features = train_inputs['features']
+
+		# TODO: convert into a log dict
+		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
+		r_other_losses, r_other_ub_losses = nem_iterations(features_corrupted, 
+													    	features, 
+													    	collision=train_inputs.get('collisions', None))
+
+		# validation phase
+		features_corrupted_valid = add_noise(valid_inputs['features'], noise_type=args.noise_type)
+		features_valid = valid_inputs['features']
+
+
+		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
+		r_other_losses, r_other_ub_losses = nem_iterations(features_corrupted_valid, 
+													    	features_valid, 
+													    	collision=train_inputs.get('collisions', None))
+
+		if loss < best_valid_loss:
+			best_valid_loss = loss
+			best_valid_epoch = epoch
+			print("    Best validation loss improved to %.03f" % best_valid_loss)
+			torch.save(model.state_dict(), os.path.abspath(os.path.join(log_dir, 'best.pth')))
+			print("    Saved to:", save_destination)
+
+		if epoch % log_per_iter == 0:
+			torch.save(model.state_dict(), os.path.abspath(os.path.join(log_dir, 'epoch_{}.pth'.format(epoch))))
+
+		if np.isnan(loss):
+			print('Early Stopping because validation loss is nan')
+			break
 
 
 if __name__ == '__main__':
@@ -228,6 +261,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--max_epoch', type=int, default=500)
     parser.add_argument('--noise_type' type=str, default='bitflip')
+    parser.add_argument('--log_per_iter', type=int, default=50)
 
     args = parser.parse_args()
     print(args)
