@@ -135,58 +135,57 @@ def nem_iterations(input_data, target_data, collisions=None, k=5, is_training=Tr
 
 	outputs = [hidden_state]
 
-	for epoch in range(args.num_epochs):
-		if is_training:
-			model.train()
+	if is_training:
+		model.train()
 
-		losses = 0.0
+	losses = 0.0
 
-		for t in range(args.nr_steps):
-			# model should predict the next frame
-			inputs = (input_data[t], target_data[t+1])
+	for t in range(args.nr_steps):
+		# model should predict the next frame
+		inputs = (input_data[t], target_data[t+1])
 
-			# forward pass
-			hidden_state, output = nem_model(inputs, hidden_state)
-			theta, pred, gamma = output
+		# forward pass
+		hidden_state, output = nem_model(inputs, hidden_state)
+		theta, pred, gamma = output
 
-			# use collision data
-			collision = torch.zeros(1, 1, 1, 1, 1) if collisions is None else collisions[t]
+		# use collision data
+		collision = torch.zeros(1, 1, 1, 1, 1) if collisions is None else collisions[t]
 
-			# compute NEM losses
-			total_loss, intra_loss, inter_loss, r_total_loss, r_intra_loss, r_inter_loss \
-				= compute_outer_loss(pred, gamma, target_data[t+1], prior, collision=collision)
+		# compute NEM losses
+		total_loss, intra_loss, inter_loss, r_total_loss, r_intra_loss, r_inter_loss \
+			= compute_outer_loss(pred, gamma, target_data[t+1], prior, collision=collision)
 
-			total_ub_loss, intra_ub_loss, inter_ub_loss, r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss \
-				= compute_outer_ub_loss(pred, target_data[t+1], prior, collision=collision)
+		total_ub_loss, intra_ub_loss, inter_ub_loss, r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss \
+			= compute_outer_ub_loss(pred, target_data[t+1], prior, collision=collision)
 
-			total_loss = intra_criterion(output, labels) + inter_criterion(output, labels)
-			losses += total_loss
+		total_loss = intra_criterion(output, labels) + inter_criterion(output, labels)
+		losses += total_loss
 
-			total_losses.append(total_loss)
-			total_ub_losses.append(total_ub_loss)
+		total_losses.append(total_loss)
+		total_ub_losses.append(total_ub_loss)
 
-			r_total_losses.append(r_total_loss)
-			r_total_ub_losses.append(r_total_ub_loss)
+		r_total_losses.append(r_total_loss)
+		r_total_ub_losses.append(r_total_ub_loss)
 
-			other_losses.append(torch.stack((total_loss, intra_loss, inter_loss)))
-			other_ub_losses.append(torch.stack((total_ub_loss, intra_ub_loss, inter_ub_loss)))
+		other_losses.append(torch.stack((total_loss, intra_loss, inter_loss)))
+		other_ub_losses.append(torch.stack((total_ub_loss, intra_ub_loss, inter_ub_loss)))
 
-			r_other_losses.append(torch.stack((r_total_loss, r_intra_loss, r_inter_loss)))
-			r_other_ub_losses.append(torch.stack((r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss)))
+		r_other_losses.append(torch.stack((r_total_loss, r_intra_loss, r_inter_loss)))
+		r_other_ub_losses.append(torch.stack((r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss)))
 
-			# backward pass and optimize
-			optimizer.zero_grad()
-			loss.backward()
-			optimizer.step()
+		# backward pass and optimize
+		optimizer.zero_grad()
+		loss.backward()
+		optimizer.step()
 
-			# print log
-			if (i+1) % 100 == 0:
-	            print ('Epoch [{}/{}], Loss: {:.4f}' 
-	                   .format(epoch+1, num_epochs, loss.item()))
+		# print log
+		if (i+1) % 100 == 0:
+            print ('Epoch [{}/{}], Loss: {:.4f}' 
+                   .format(epoch+1, num_epochs, loss.item()))
 
-		losses /= len(input_data)
-		print('%s [%d/%d] Loss: %.4f, Best valid: %.4f' %
-              (phase, epoch, args.n_epoch, losses, best_valid_loss))
+	losses /= len(input_data)
+	print('%s [%d/%d] Loss: %.4f, Best valid: %.4f' %
+          (phase, epoch, args.n_epoch, losses, best_valid_loss))
 
 	thetas, preds, gammas = zip(*outputs)
 	thetas = torch.stack((thetas,))
