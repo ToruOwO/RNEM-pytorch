@@ -101,12 +101,15 @@ def compute_outer_ub_loss(pred, target, prior, collision):
 def nem_iterations(input_data, target_data, collisions=None, k=5, is_training=True):
 	# get input dimensions
 	input_shape = input_data.size()
+
+	print("input data is of size", input_shape)
+
 	assert input_shape[0] == 6, "Requires 6D input (T, B, K, W, H, C) but {}".format(input_shape[0])
 	W, H, C = (x for x in input_shape[-3:])
 
 	# set initial distribution (Bernoulli) of pixels
 	inner_model = InnerConvAE(K=k)
-	nem_model = NEM(inner_model, input_size=(W, H, C), inner_model.hidden_size, inner_model.input_size)
+	nem_model = NEM(inner_model, (W, H, C), inner_model.hidden_size, inner_model.input_size)
 
 	# compute Bernoulli prior
 	prior = compute_bernoulli_prior()
@@ -170,6 +173,7 @@ def nem_iterations(input_data, target_data, collisions=None, k=5, is_training=Tr
 		other_losses.append(torch.stack((total_loss, intra_loss, inter_loss)))
 		other_ub_losses.append(torch.stack((total_ub_loss, intra_ub_loss, inter_ub_loss)))
 
+
 		r_other_losses.append(torch.stack((r_total_loss, r_intra_loss, r_inter_loss)))
 		r_other_ub_losses.append(torch.stack((r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss)))
 
@@ -180,8 +184,7 @@ def nem_iterations(input_data, target_data, collisions=None, k=5, is_training=Tr
 
 		# print log
 		if (i+1) % 100 == 0:
-            print ('Epoch [{}/{}], Loss: {:.4f}' 
-                   .format(epoch+1, num_epochs, loss.item()))
+			print('Epoch [{}/{}], Loss: {:.4f}'.format(epoch+1, num_epochs, loss.item()))
 
 	losses /= len(input_data)
 	print('%s [%d/%d] Loss: %.4f, Best valid: %.4f' %
@@ -253,16 +256,16 @@ def main():
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
-	parser.add_argument('--data_name' type=str, default='balls3curtain64')
+	parser.add_argument('--data_name', type=str, default='balls3curtain64')
 	parser.add_argument('--log_dir', type=str, default='./debug')
 	parser.add_argument('--nr_steps', type=int, default=30)
 	parser.add_argument('--batch_size', type=int, default=64)
-    parser.add_argument('--lr', type=float, default=0.001)
-    parser.add_argument('--max_epoch', type=int, default=500)
-    parser.add_argument('--noise_type' type=str, default='bitflip')
-    parser.add_argument('--log_per_iter', type=int, default=50)
+	parser.add_argument('--lr', type=float, default=0.001)
+	parser.add_argument('--max_epoch', type=int, default=500)
+	parser.add_argument('--noise_type', type=str, default='bitflip')
+	parser.add_argument('--log_per_iter', type=int, default=50)
 
-    args = parser.parse_args()
-    print(args)
+	args = parser.parse_args()
+	print(args)
 
-    main()
+	main()
