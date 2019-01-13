@@ -98,11 +98,12 @@ class Data(Dataset):
 			return v[1]
 
 
-# train_data = Data('balls3curtain64', 'training')
+train_data = Data('balls3curtain64', 'training')
 # print("Number of sequences in training data:", len(train_data))
+# print("Data shape", train_data)
 # print("Torch size of each sequence:", train_data[0]['features'].shape)
 
-# dataloader = DataLoader(d, batch_size=batch_size, 
-# 						shuffle=False, num_workers=0)
-# for i, dd in enumerate(dataloader):
-# 	print(i, dd)
+dataloader = DataLoader(train_data, batch_size=batch_size, 
+						shuffle=True, num_workers=0)
+for i, dd in enumerate(dataloader):
+	print(i, dd, dd.keys())

@@ -98,7 +98,7 @@ def compute_outer_ub_loss(pred, target, prior, collision):
 	return total_ub_loss, intra_ub_loss, inter_ub_loss, r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss
 
 
-def nem_iterations(input_data, target_data, collisions=None, k=5, is_training=True):
+def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	# get input dimensions
 	input_shape = input_data.size()
 
@@ -108,7 +108,7 @@ def nem_iterations(input_data, target_data, collisions=None, k=5, is_training=Tr
 	W, H, C = (x for x in input_shape[-3:])
 
 	# set initial distribution (Bernoulli) of pixels
-	inner_model = InnerConvAE(K=k)
+	inner_model = InnerConvAE(K=args.k)
 	nem_model = NEM(inner_model, (W, H, C), inner_model.hidden_size, inner_model.input_size)
 
 	# compute Bernoulli prior
@@ -211,9 +211,6 @@ def main():
 	train_inputs = Data(args.data_name, 'training', sequence_length=nr_iters, attribute_list=attribute_list)
 	valid_inputs = Data(args.data_name, 'validation', sequence_length=nr_iters, attribute_list=attribute_list)
 
-	# build model
-	model = InnerConvAE()
-
 	# training
 	best_valid_loss = np.inf
 	best_valid_epoch = 0
@@ -264,8 +261,11 @@ if __name__ == '__main__':
 	parser.add_argument('--max_epoch', type=int, default=500)
 	parser.add_argument('--noise_type', type=str, default='bitflip')
 	parser.add_argument('--log_per_iter', type=int, default=50)
+	parser.add_argument('--k', type=int, default=5)
 
 	args = parser.parse_args()
+	print("=== Arguments ===")
 	print(args)
+	print()
 
 	main()
