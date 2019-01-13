@@ -26,7 +26,7 @@ def add_noise(data, noise_type=None, noise_prob=0.2):
 
 	else:
 		shape = torch.stack([s.value if s.value is not None else data.size()[i]
-                         for i, s in enumerate(data.size())])
+			for i, s in enumerate(data.size())])
 		
 		if noise_type == 'bitflip':
 			noise_dist = dist.Bernoulli(probs=noise_prob)

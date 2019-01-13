@@ -51,11 +51,11 @@ class NEM(nn.RNN):
 	def mask_rnn_inputs(rnn_inputs, gamma):
 		"""
 		Mask the deltas (inputs to RNN) by gamma.
-        :param rnn_inputs: (B, K, W, H, C)
-            Note: This is a list to later support multiple inputs
-        :param gamma: (B, K, W, H, 1)
+		:param rnn_inputs: (B, K, W, H, C)
+		    Note: This is a list to later support multiple inputs
+		:param gamma: (B, K, W, H, 1)
 
-        :return: masked deltas (B, K, W, H, C)
+		:return: masked deltas (B, K, W, H, C)
 		"""
 		with torch.no_grad():
 			return rnn_inputs * gamma
@@ -75,9 +75,9 @@ class NEM(nn.RNN):
 		"""
 		Compute pixelwise loss of predictions (wrt. the data).
 
-        :param predictions: (B, K, W, H, C)
-        :param data: (B, 1, W, H, C)
-        :return: local loss (B, K, W, H, 1)
+		:param predictions: (B, K, W, H, C)
+		:param data: (B, 1, W, H, C)
+		:return: local loss (B, K, W, H, 1)
 		"""
 		loss = data * predictions + (1 - data) * (1 - predictions)
 		if epsilon > 0:

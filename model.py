@@ -185,35 +185,35 @@ class R_NEM(nn.RNN):
 
 	def forward(self, x, state):
 		"""
-        input: [B X K, M]
-        state: [B x K, H]
+		input: [B X K, M]
+		state: [B x K, H]
 
-        b: batch_size
-        k: num_groups
-        m: input_size
-        h: hidden_size
-        h1: size of the encoding of focus and context
-        h2: size of effect
-        o: size of output
+		b: batch_size
+		k: num_groups
+		m: input_size
+		h: hidden_size
+		h1: size of the encoding of focus and context
+		h2: size of effect
+		o: size of output
 
-        # 0. Encode with RNN: x is [B*K, M], h is [B*K, H] --> both are [B*K, H]
-        # 1. Reshape both to [B, K, H]
-        # 2. For each of the k in K copies, extract the K-1 states that are not that k
-        # 3. Now you have two tensors of size [B x K x K-1, H]
-        #     The first: "focus object": K-1 copies of the state of "k", the focus object
-        #     The second: "context objects": K-1 (all unique) states of the context objects
-        # 4. Concatenate results of 3
-        # 5. Core: Process result of 4 in a feedforward network --> [B x K, H'']
-        # 6. Reshape to [B x K, K-1, H''] to isolate the K-1 dimension (because we did for K-1 pairs)
-        # 7. Sum in the K-1 dimension --> [B x K, H'']
-        #   7.5 weighted by attention
-        # 8. Decoder: Concatenate result of 7, the original theta, and the x and process into new state --> [B x K, H]
-        # 9. Actions: Optionally embed actions into some representation
+		# 0. Encode with RNN: x is [B*K, M], h is [B*K, H] --> both are [B*K, H]
+		# 1. Reshape both to [B, K, H]
+		# 2. For each of the k in K copies, extract the K-1 states that are not that k
+		# 3. Now you have two tensors of size [B x K x K-1, H]
+		#     The first: "focus object": K-1 copies of the state of "k", the focus object
+		#     The second: "context objects": K-1 (all unique) states of the context objects
+		# 4. Concatenate results of 3
+		# 5. Core: Process result of 4 in a feedforward network --> [B x K, H'']
+		# 6. Reshape to [B x K, K-1, H''] to isolate the K-1 dimension (because we did for K-1 pairs)
+		# 7. Sum in the K-1 dimension --> [B x K, H'']
+		#   7.5 weighted by attention
+		# 8. Decoder: Concatenate result of 7, the original theta, and the x and process into new state --> [B x K, H]
+		# 9. Actions: Optionally embed actions into some representation
 
-        """
-        b, k, m = self.get_shapes(x)
+		"""
+		b, k, m = self.get_shapes(x)
 
-        x, state = self.rnn(x, state)
+		x, state = self.rnn(x, state)
 
 
 class EncoderLayer(nn.Module):
