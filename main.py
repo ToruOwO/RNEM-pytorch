@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.distributions as dist
+import torch.utils.data
 
 from data import Data
 from model import InnerConvAE
@@ -211,30 +212,33 @@ def main():
 	train_inputs = Data(args.data_name, 'training', sequence_length=nr_iters, attribute_list=attribute_list)
 	valid_inputs = Data(args.data_name, 'validation', sequence_length=nr_iters, attribute_list=attribute_list)
 
+	train_data = torch.utils.data.DataLoader(train_inputs, batch_size=args.data_batch_size, shuffle=True)
+	valid_data = torch.utils.data.DataLoader(valid_inputs, batch_size=args.data_batch_size, shuffle=False)
+
 	# training
 	best_valid_loss = np.inf
 	best_valid_epoch = 0
 
 	for epoch in range(1, args.max_epoch + 1):
 		# training phase
-		features_corrupted = add_noise(train_inputs['features'], noise_type=args.noise_type)
-		features = train_inputs['features']
+		features_corrupted = add_noise(train_data['features'], noise_type=args.noise_type)
+		features = train_data['features']
 
 		# TODO: convert into a log dict
 		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
 		r_other_losses, r_other_ub_losses = nem_iterations(features_corrupted, 
 													    	features, 
-													    	collision=train_inputs.get('collisions', None))
+													    	collision=train_data.get('collisions', None))
 
 		# validation phase
-		features_corrupted_valid = add_noise(valid_inputs['features'], noise_type=args.noise_type)
-		features_valid = valid_inputs['features']
+		features_corrupted_valid = add_noise(valid_data['features'], noise_type=args.noise_type)
+		features_valid = valid_data['features']
 
 
 		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
 		r_other_losses, r_other_ub_losses = nem_iterations(features_corrupted_valid, 
 													    	features_valid, 
-													    	collision=train_inputs.get('collisions', None))
+													    	collision=valid_data.get('collisions', None))
 
 		if loss < best_valid_loss:
 			best_valid_loss = loss
@@ -262,6 +266,7 @@ if __name__ == '__main__':
 	parser.add_argument('--noise_type', type=str, default='bitflip')
 	parser.add_argument('--log_per_iter', type=int, default=50)
 	parser.add_argument('--k', type=int, default=5)
+	parser.add_argument('--data_batch_size', type=int, default=10)
 
 	args = parser.parse_args()
 	print("=== Arguments ===")

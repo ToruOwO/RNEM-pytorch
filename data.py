@@ -23,19 +23,19 @@ class Data(Dataset):
 		data_name (str): name of dateset (e.g. balls4mass64)
 		phase(str): "training" or "validation"
 		sequence_length(int): number of frames to use
-		attribute_list(tuple): list of attributes used
+		attribute(str): attribute used
 	"""
-	def __init__(self, data_name, phase, sequence_length=51, attribute_list=('features', 'groups')):
+	def __init__(self, data_name, phase, sequence_length=51, attribute='features'):
 		if data_name not in data_names:
 			print("Dataset does not exist")
 
 		self.data_name = data_name
 		self.phase = phase
 		self.sequence_length = sequence_length
-		self.attribute_list = attribute_list
-		self.data_shapes = {}
+		self.attribute = attribute
+		self.data_shape = None
 		
-		self.dataset = self._load_dataset()
+		self.data = self._load_dataset()
 
 	def _load_dataset(self):
 		"""
@@ -56,54 +56,46 @@ class Data(Dataset):
 		file_path = os.path.join(data_path, self.data_name + '.h5')
 		f = h5py.File(file_path, 'r')
 
-		dataset = {}
-
 		# TODO: read-in large amount of data in parallel using batch
 		# Warning: H5PY might not work with PyTorch Dataloader
-		for attr in self.attribute_list:
-			# shape of data is (T, B, K, W, H, C)
-			data_shape = (self.sequence_length, batch_size, 1) + f[self.phase][attr].shape[2:]
-			self.data_shapes[attr] = data_shape
 
-			# reshape data accordingly
-			data = f[self.phase][attr][:self.sequence_length, :batch_size, :, :, :]
-			data = np.reshape(data, data_shape)
-			# print(data.shape)
-			dataset[attr] = data
+		# shape of data is (T, B, K, W, H, C)
+		data_shape = (self.sequence_length, batch_size, 1) + f[self.phase][self.attribute].shape[2:]
+		self.data_shape = data_shape
 
-		# print(self.data_shapes)
+		# reshape data accordingly
+		data = f[self.phase][self.attribute][:self.sequence_length, :batch_size, :, :, :]
+		data = np.reshape(data, data_shape)
+		
+		print(data.shape)
+		print(self.data_shape)
 
 		# remember to close file
 		f.close()
-		return dataset
+		return data
 
 	def __getitem__(self, idx):
 		if idx >= batch_size:
 			return None
 
-		item = {}
+		d = self.data[:, idx, :, :, :, :]
 
-		for attr in self.attribute_list:
-			d = self.dataset[attr][:, idx, :, :, :, :]
+		# convert data to PyTorch tensor
+		t = torch.Tensor(d.astype(float))
 
-			# convert data to PyTorch tensor
-			t = torch.Tensor(d.astype(float))
-
-			item[attr] = t
-
-		return item
+		return t
 
 	def __len__(self):
-		for k, v in self.data_shapes.items():
-			return v[1]
+		return self.data_shape[1]
 
 
 train_data = Data('balls3curtain64', 'training')
-# print("Number of sequences in training data:", len(train_data))
-# print("Data shape", train_data)
-# print("Torch size of each sequence:", train_data[0]['features'].shape)
+print("Number of sequences in training data:", len(train_data))
+print("Data shape", train_data)
+print("Torch size of each sequence:", train_data[0].shape)
 
 dataloader = DataLoader(train_data, batch_size=batch_size, 
 						shuffle=True, num_workers=0)
+print(type(dataloader))
 for i, dd in enumerate(dataloader):
-	print(i, dd, dd.keys())
+	print(i, dd.shape)
