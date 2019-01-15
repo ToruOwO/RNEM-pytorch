@@ -68,6 +68,7 @@ class Data(Dataset):
 		data = np.reshape(data, data_shape)
 		
 		print("Shape of loaded data:", self.data_shape)
+		print()
 
 		# remember to close file
 		f.close()
@@ -95,6 +96,3 @@ class Data(Dataset):
 
 # dataloader = DataLoader(train_data, batch_size=batch_size, 
 # 						shuffle=True, num_workers=0)
-# print(type(dataloader))
-# for i, dd in enumerate(dataloader):
-# 	print(i, dd.shape)

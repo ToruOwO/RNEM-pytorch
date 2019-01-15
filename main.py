@@ -26,18 +26,25 @@ def add_noise(data, noise_type=None, noise_prob=0.2):
 		return data
 
 	else:
-		shape = torch.stack([s.value if s.value is not None else data.size()[i]
-			for i, s in enumerate(data.size())])
-		
-		if noise_type == 'bitflip':
-			noise_dist = dist.Bernoulli(probs=noise_prob)
-			n = noise_dist.sample(shape)
-			corrupted = data + n - 2 * data * n  # hacky way of implementing (data XOR n)
-		else:
-			raise KeyError('Unknown noise_type "{}"'.format(noise_type))
+		shape = data[0].size()
+		corrupted_data = []
 
-		corrupted.view(data.size())
-		return corrupted
+		for i in range(len(data)):
+
+			if noise_type == 'bitflip':
+				noise_dist = dist.Bernoulli(probs=noise_prob)
+				n = noise_dist.sample(shape)
+				corrupted = data[i] + n - 2 * data[i] * n  # hacky way of implementing (data XOR n)
+			else:
+				raise KeyError('Unknown noise_type "{}"'.format(noise_type))
+
+			corrupted.view(shape)
+			corrupted_data.append(corrupted)
+
+		corrupted_data = torch.stack(corrupted_data, dim=1)
+		# print(corrupted_data.size())
+
+		return corrupted_data
 
 
 def compute_bernoulli_prior():
@@ -105,7 +112,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 
 	print("input data is of size", input_shape)
 
-	assert input_shape[0] == 6, "Requires 6D input (T, B, K, W, H, C) but {}".format(input_shape[0])
+	assert len(input_shape) == 6, "Requires 6D input (T, B, K, W, H, C)"
 	W, H, C = (x for x in input_shape[-3:])
 
 	# set initial distribution (Bernoulli) of pixels
@@ -214,10 +221,10 @@ def main():
 	valid_inputs = { attribute: Data(
 		args.data_name, 'validation', sequence_length=nr_iters, attribute=attribute) for attribute in attribute_list }
 
-	train_data = { attribute: torch.utils.data.DataLoader(
-		train_inputs[attribute], batch_size=args.data_batch_size, shuffle=True) for attribute in attribute_list }
-	valid_data = { attribute: torch.utils.data.DataLoader(
-		valid_inputs[attribute], batch_size=args.data_batch_size, shuffle=False) for attribute in attribute_list }
+	# train_inputs = { attribute: torch.utils.data.DataLoader(
+	# 	train_inputs[attribute], batch_size=args.data_batch_size, shuffle=True) for attribute in attribute_list }
+	# valid_inputs = { attribute: torch.utils.data.DataLoader(
+	# 	valid_inputs[attribute], batch_size=args.data_batch_size, shuffle=False) for attribute in attribute_list }
 
 	# training
 	best_valid_loss = np.inf
@@ -225,24 +232,24 @@ def main():
 
 	for epoch in range(1, args.max_epoch + 1):
 		# training phase
-		features_corrupted = add_noise(train_data['features'], noise_type=args.noise_type)
-		features = train_data['features']
+		features_corrupted = add_noise(train_inputs['features'], noise_type=args.noise_type)
+		features = train_inputs['features']
 
 		# TODO: convert into a log dict
 		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
 		r_other_losses, r_other_ub_losses = nem_iterations(features_corrupted, 
 													    	features, 
-													    	collision=train_data.get('collisions', None))
+													    	collisions=train_inputs.get('collisions', None))
 
 		# validation phase
-		features_corrupted_valid = add_noise(valid_data['features'], noise_type=args.noise_type)
-		features_valid = valid_data['features']
+		features_corrupted_valid = add_noise(valid_inputs['features'], noise_type=args.noise_type)
+		features_valid = valid_inputs['features']
 
 
 		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
 		r_other_losses, r_other_ub_losses = nem_iterations(features_corrupted_valid, 
 													    	features_valid, 
-													    	collision=valid_data.get('collisions', None))
+													    	collisions=valid_inputs.get('collisions', None))
 
 		if loss < best_valid_loss:
 			best_valid_loss = loss
