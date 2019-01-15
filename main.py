@@ -209,11 +209,15 @@ def main():
 	attribute_list = ('features', 'groups')
 	nr_iters = args.nr_steps + 1
 
-	train_inputs = Data(args.data_name, 'training', sequence_length=nr_iters, attribute_list=attribute_list)
-	valid_inputs = Data(args.data_name, 'validation', sequence_length=nr_iters, attribute_list=attribute_list)
+	train_inputs = { attribute: Data(
+		args.data_name, 'training', sequence_length=nr_iters, attribute=attribute) for attribute in attribute_list }
+	valid_inputs = { attribute: Data(
+		args.data_name, 'validation', sequence_length=nr_iters, attribute=attribute) for attribute in attribute_list }
 
-	train_data = torch.utils.data.DataLoader(train_inputs, batch_size=args.data_batch_size, shuffle=True)
-	valid_data = torch.utils.data.DataLoader(valid_inputs, batch_size=args.data_batch_size, shuffle=False)
+	train_data = { attribute: torch.utils.data.DataLoader(
+		train_inputs[attribute], batch_size=args.data_batch_size, shuffle=True) for attribute in attribute_list }
+	valid_data = { attribute: torch.utils.data.DataLoader(
+		valid_inputs[attribute], batch_size=args.data_batch_size, shuffle=False) for attribute in attribute_list }
 
 	# training
 	best_valid_loss = np.inf

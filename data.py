@@ -67,8 +67,7 @@ class Data(Dataset):
 		data = f[self.phase][self.attribute][:self.sequence_length, :batch_size, :, :, :]
 		data = np.reshape(data, data_shape)
 		
-		print(data.shape)
-		print(self.data_shape)
+		print("Shape of loaded data:", self.data_shape)
 
 		# remember to close file
 		f.close()
@@ -89,13 +88,13 @@ class Data(Dataset):
 		return self.data_shape[1]
 
 
-train_data = Data('balls3curtain64', 'training')
-print("Number of sequences in training data:", len(train_data))
-print("Data shape", train_data)
-print("Torch size of each sequence:", train_data[0].shape)
+# train_data = Data('balls3curtain64', 'training')
+# print("Number of sequences in training data:", len(train_data))
+# print("Data shape", train_data)
+# print("Torch size of each sequence:", train_data[0].shape)
 
-dataloader = DataLoader(train_data, batch_size=batch_size, 
-						shuffle=True, num_workers=0)
-print(type(dataloader))
-for i, dd in enumerate(dataloader):
-	print(i, dd.shape)
+# dataloader = DataLoader(train_data, batch_size=batch_size, 
+# 						shuffle=True, num_workers=0)
+# print(type(dataloader))
+# for i, dd in enumerate(dataloader):
+# 	print(i, dd.shape)
