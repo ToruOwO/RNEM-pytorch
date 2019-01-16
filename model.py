@@ -309,12 +309,17 @@ class RecurrentLayer(nn.Module):
 		return x
 
 
-class InnerConvAE(nn.RNN):
-	def __init__(self, input_size, hidden_size, K):
-		super(InnerCAE, self).__init__(input_size, hidden_size)
+class RNEM(nn.module):
+	def __init__(self, input_size, hidden_size, K, num_layers=1):
+		super(RNEM, self).__init__()
+
 		self.encoder = EncoderLayer(input_size, hidden_size)
 		self.recurrent = RecurrentLayer(K)
 		self.decoder = DecoderLayer(input_size, hidden_size)
 
 	def forward(self, x):
-		raise NotImplementedError
+		out = self.encoder(x)
+		out = self.recurrent(out)
+		out = self.decoder(out)
+
+		return out
