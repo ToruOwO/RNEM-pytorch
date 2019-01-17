@@ -5,14 +5,17 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.distributions as dist
 
+from model import InnerRNN
+
 class NEM(nn.RNN):
-	def __init__(self, input_size, hidden_size, output_size):
+	def __init__(self, inner_rnn, input_size, hidden_size, output_size):
 		gamma_size = input_size[:-1] + (1,)
 		rnn_input_size = (hidden_size, input_size, gamma_size)
 		rnn_hidden_size = (output_size, input_size, gamma_size)
 
 		super(ReshapeWrapper, self).__init__(rnn_input_size, rnn_hidden_size)
 
+		self.inner_rnn = inner_rnn # Inner RNN
 		self.input_size = input_size
 		self.gamma_size = gamma_size
 
@@ -67,7 +70,7 @@ class NEM(nn.RNN):
 		M = torch.tensor(self.input_size).prod()
 		reshaped_masked_deltas = masked_deltas.view(torch.stack([batch_size * K, M]))
 
-		preds, h_new = self.forward(reshaped_masked_deltas, h_old)
+		preds, h_new = self.inner_rnn(reshaped_masked_deltas, h_old)
 
 		return preds.view(d_size), h_new
 

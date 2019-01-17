@@ -179,8 +179,8 @@ class R_NEM(nn.RNN):
 		self.K = K
 
 	def get_shapes(self, x):
-		bk = x.size()[0]
-		m = x.size()[1]
+		bk = x.size()[0] # batch size * K
+		m = x.size()[1] # np.prod(input_size.as_list())
 		return bk // self.K, self.K, m
 
 	def forward(self, x, state):
@@ -213,7 +213,65 @@ class R_NEM(nn.RNN):
 		"""
 		b, k, m = self.get_shapes(x)
 
-		x, state = self.rnn(x, state)
+		# encode theta
+		state1 = self.encoder(state)
+
+		# reshape theta to be used for context
+		h1 = state1.size()[1]
+		state1r = state1.view(b, k, h1)   # (b, k, h1)
+
+		# reshape theta to be used for focus
+		state1rr = state1r.view(b, k, 1, h1)   # (b, k, 1, h1)
+
+		# create focus
+		fs = state1rr.repeat(1, 1, k-1, 1)   # (b, k, k-1, h1)
+
+		# create context
+		state1rl = torch.unbind(state1r, dim=1)   # list of length k of (b, h1)
+
+		if k > 1:
+			csu = []
+			for i in range(k):
+				selector = [j for j in range(k) if j != i]
+				c = list(np.take(state1rl, selector)) # list of length k-1 of (b, h1)
+				c = torch.stack(c, dim=1)
+				csu.append(c)
+
+			cs = torch.stack(csu, dim=1)
+		else:
+			cs = torch.zeros(b, k, k-1, h1)
+
+		# reshape focus and context
+		fsr, csr = fs.view(b*k*(k-1), h1), cs.view(b*k*(k-1), h1)   # (b*k*(k-1), h1)
+
+		# concatenate focus and context
+		concat = torch.cat([fsr, csr], dim=1)   # (b*k*(k-1), 2*h1)
+
+		# core
+		core_out = self.core(concat)
+
+		# context; obtained from core_out
+		context_out = self.context(core_out)
+
+		h2 = 250
+		contextr = context_out.view(b*k, k-1, h2)   # (b*k, k-1, h2)
+
+		# attention coefficients; obtained from core_out
+		attention_out = self.attention(core_out)
+
+		# produce effect as sum(context_out * attention_out)
+		attentionr = attention_out.view(b*k, k-1, 1)
+		effect_sum = torch.sum(contextr * attentionr, dim=1)
+
+		# calculate new state (where the input from encoder comes in)
+		# concatenate (state1, effect_sum, inputs)
+		total = torch.cat([state1, effect_sum, inputs], dim=1)   # (b*k, h+h2+m)
+
+		# produce recurrent update
+		out_fc = nn.Linear((b*k, h+h2+m), self.size) # (b*k, h)
+		new_state = out_fc(total)
+
+		return new_state, new_state
 
 
 class EncoderLayer(nn.Module):
@@ -309,15 +367,15 @@ class RecurrentLayer(nn.Module):
 		return x
 
 
-class RNEM(nn.module):
+class InnerRNN(nn.RNN):
 	def __init__(self, input_size, hidden_size, K, num_layers=1):
-		super(RNEM, self).__init__()
+		super(InnerRNN, self).__init__(input_size, hidden_size)
 
 		self.encoder = EncoderLayer(input_size, hidden_size)
 		self.recurrent = RecurrentLayer(K)
 		self.decoder = DecoderLayer(input_size, hidden_size)
 
-	def forward(self, x):
+	def forward(self, x, states):
 		out = self.encoder(x)
 		out = self.recurrent(out)
 		out = self.decoder(out)
