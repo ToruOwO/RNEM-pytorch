@@ -5,29 +5,29 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.distributions as dist
 
-from model import InnerRNN
-
-class NEM(nn.RNN):
+class NEM(nn.Module):
 	def __init__(self, inner_rnn, input_size, hidden_size, output_size):
+		super(NEM, self).__init__()
+		self.inner_rnn = inner_rnn # InnerRNN defined in model.py
+
 		gamma_size = input_size[:-1] + (1,)
-		rnn_input_size = (hidden_size, input_size, gamma_size)
-		rnn_hidden_size = (output_size, input_size, gamma_size)
+		# rnn_input_size = (hidden_size, input_size, gamma_size)
+		# rnn_hidden_size = (output_size, input_size, gamma_size)
+		# self.rnn = nn.RNN(rnn_input_size, rnn_hidden_size)
 
-		super(ReshapeWrapper, self).__init__(rnn_input_size, rnn_hidden_size)
-
-		self.inner_rnn = inner_rnn # Inner RNN
+		self.hidden_size = hidden_size
 		self.input_size = input_size
 		self.gamma_size = gamma_size
 
-	def init_state(self, batch_size, K, dtype=torch.float):
-		h = torch.zeros(batch_size*K, *self.hidden_size, dtype=dtype)
+	def init_state(self, batch_size, K,  dtype=torch.float32):
+		h = torch.zeros(batch_size*K, self.hidden_size, dtype=torch.float32)
 
-		pred = torch.zeros(batch_size, K, *self.input_size, dtype=dtype)
+		pred = torch.zeros(batch_size, K, *self.input_size, dtype=torch.float32)
 
 		# initialize with Gaussian distribution
 		gamma_shape = [batch_size, K] + list(self.gamma_size)
 		gamma = np.absolute(np.random.normal(size=gamma_shape))
-		gamma = torch.from_numpy(gamma)
+		gamma = torch.from_numpy(gamma.astype(np.float32))
 		gamma = torch.sum(gamma, dim=1, keepdim=True)
 
 		# init with all 1 if K = 1
@@ -37,7 +37,7 @@ class NEM(nn.RNN):
 		return h, pred, gamma
 
 	@staticmethod
-	def delta_predictions(predicitons, data):
+	def delta_predictions(predictions, data):
 		"""
 		Compute the derivative of the prediction wrt. to the loss.
 		For binary and real with just μ this reduces to (predictions - data).
@@ -68,7 +68,7 @@ class NEM(nn.RNN):
 		batch_size = d_size[0]
 		K = d_size[1]
 		M = torch.tensor(self.input_size).prod()
-		reshaped_masked_deltas = masked_deltas.view(torch.stack([batch_size * K, M]))
+		reshaped_masked_deltas = masked_deltas.view(batch_size * K, M)
 
 		preds, h_new = self.inner_rnn(reshaped_masked_deltas, h_old)
 
@@ -95,7 +95,7 @@ class NEM(nn.RNN):
 
 		return gamma
 
-	def __call__(self, x, state):
+	def forward(self, x, state):
 		# unpack values
 		input_data, target_data = x
 		h_old, preds_old, gamma_old = state

@@ -116,8 +116,10 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	W, H, C = (x for x in input_shape[-3:])
 
 	# set initial distribution (Bernoulli) of pixels
-	inner_model = InnerRNN((args.batch_size*args.k, W*H*C), 250, K=args.k)
-	nem_model = NEM(inner_model, (W, H, C), inner_model.hidden_size, inner_model.input_size)
+	inner_input_size = W * H * C
+	inner_hidden_size = args.inner_hidden_size
+	inner_model = InnerRNN(inner_input_size, inner_hidden_size, K=args.k)
+	nem_model = NEM(inner_model, (W, H, C), inner_hidden_size, inner_input_size)
 
 	# compute Bernoulli prior
 	prior = compute_bernoulli_prior()
@@ -132,7 +134,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	optimizer = optim.Adam(nem_model.parameters(), lr=args.lr)
 
 	# outputs
-	hidden_state = nem_model.init_state(input_shape[1], k)
+	hidden_state = nem_model.init_state(input_shape[1], args.k)
 
 	# record losses
 	total_losses = []
@@ -147,7 +149,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	outputs = [hidden_state]
 
 	if is_training:
-		model.train()
+		nem_model.train()
 
 	losses = 0.0
 
@@ -278,6 +280,7 @@ if __name__ == '__main__':
 	parser.add_argument('--log_per_iter', type=int, default=50)
 	parser.add_argument('--k', type=int, default=5)
 	parser.add_argument('--data_batch_size', type=int, default=10)
+	parser.add_argument('--inner_hidden_size', type=int, default=250)
 
 	args = parser.parse_args()
 	print("=== Arguments ===")

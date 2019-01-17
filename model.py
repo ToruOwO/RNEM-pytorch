@@ -88,7 +88,7 @@ class ActivationFunctionWrapper(nn.Module):
 
 class LayerNormWrapper(nn.Module):
 	def __init__(self, input_size, hidden_size, apply_to="output"):
-		super(LayerNormModule, self).__init__(input_size, hidden_size)
+		super(LayerNormWrapper, self).__init__()
 		self.rnn = nn.RNN(input_size, hidden_size)
 		self.apply_to = apply_to
 
@@ -152,8 +152,6 @@ class OutputWrapper(nn.Module):
 			self.ln = LayerNormWrapper(input_size, hidden_size, apply_to="output")
 
 		self.act = ActivationFunctionWrapper(input_size, hidden_size, activation=activation, apply_to="output")
-
-		self.module = nn.Sequential(*modules)
 
 	def forward(self, x, state):
 		# apply recurrent update

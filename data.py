@@ -81,7 +81,7 @@ class Data(Dataset):
 		d = self.data[:, idx, :, :, :, :]
 
 		# convert data to PyTorch tensor
-		t = torch.Tensor(d.astype(float))
+		t = torch.tensor(d.astype(np.float32))
 
 		return t
 
