@@ -34,6 +34,8 @@ class NEM(nn.Module):
 		if K == 1:
 			gamma = torch.ones_like(gamma)
 
+		print("h, pred, gamma", h.size(), pred.size(), gamma.size())
+
 		return h, pred, gamma
 
 	@staticmethod

@@ -32,7 +32,11 @@ class ReshapeWrapper(nn.Module):
 			else:
 				reshape_size = (batch_size,) + self.shape
 				x = x.view(reshape_size)
-			return self.rnn(x, state)
+
+			# print("x", x.size())
+			# print("state", state.size())
+
+			return x, state
 
 		elif self.apply_to == "output":
 			x_out, next_state = self.rnn(x, state)
@@ -400,7 +404,7 @@ class InnerRNN(nn.Module):
 	def __init__(self, input_size, hidden_size, K, num_layers=1):
 		super(InnerRNN, self).__init__()
 
-		self.encoder = EncoderLayer(input_size, hidden_size)
+		self.encoder = EncoderLayer(input_size, hidden_size)   # (W * H * C, 250)
 		self.recurrent = RecurrentLayer(K)
 		self.decoder = DecoderLayer(input_size, hidden_size)
 
