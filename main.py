@@ -115,13 +115,13 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	assert len(input_shape) == 6, "Requires 6D input (T, B, K, W, H, C)"
 	W, H, C = (x for x in input_shape[-3:])
 
-	# set initial distribution (Bernoulli) of pixels
+	# set up initial inner RNN and NEM model
 	inner_input_size = W * H * C
 	inner_hidden_size = args.inner_hidden_size
 	inner_model = InnerRNN(inner_input_size, inner_hidden_size, K=args.k)
-	nem_model = NEM(inner_model, (W, H, C), inner_hidden_size, inner_input_size)
+	nem_model = NEM(inner_model, input_size=(W, H, C), hidden_size=inner_hidden_size, output_size=inner_input_size)
 
-	# compute Bernoulli prior
+	# compute Bernoulli prior of pixels
 	prior = compute_bernoulli_prior()
 
 	# use binomial cross entropy as intra loss
@@ -210,9 +210,10 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 
 
 def main():
-	if args.log_dir is None:
-		utils.create_directory(log_dir)
-		utils.clear_directory(log_dir)
+	log_dir = args.log_dir
+
+	utils.create_directory(log_dir)
+	utils.clear_directory(log_dir)
 
 	# set up input data
 	attribute_list = ('features', 'groups')
@@ -239,9 +240,9 @@ def main():
 
 		# TODO: convert into a log dict
 		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
-		r_other_losses, r_other_ub_losses = nem_iterations(features_corrupted, 
-													    	features, 
-													    	collisions=train_inputs.get('collisions', None))
+		r_other_losses, r_other_ub_losses = nem_iterations(features_corrupted,
+														   features,
+														   collisions=train_inputs.get('collisions', None))
 
 		# validation phase
 		features_corrupted_valid = add_noise(valid_inputs['features'], noise_type=args.noise_type)
@@ -249,18 +250,18 @@ def main():
 
 
 		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
-		r_other_losses, r_other_ub_losses = nem_iterations(features_corrupted_valid, 
-													    	features_valid, 
-													    	collisions=valid_inputs.get('collisions', None))
+		r_other_losses, r_other_ub_losses = nem_iterations(features_corrupted_valid,
+														   features_valid,
+														   collisions=valid_inputs.get('collisions', None))
 
 		if loss < best_valid_loss:
 			best_valid_loss = loss
 			best_valid_epoch = epoch
 			print("    Best validation loss improved to %.03f" % best_valid_loss)
 			torch.save(model.state_dict(), os.path.abspath(os.path.join(log_dir, 'best.pth')))
-			print("    Saved to:", save_destination)
+			print("    Saved to:", args.save_dir)
 
-		if epoch % log_per_iter == 0:
+		if epoch % args.log_per_iter == 0:
 			torch.save(model.state_dict(), os.path.abspath(os.path.join(log_dir, 'epoch_{}.pth'.format(epoch))))
 
 		if np.isnan(loss):
@@ -272,8 +273,9 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--data_name', type=str, default='balls3curtain64')
 	parser.add_argument('--log_dir', type=str, default='./debug')
+	parser.add_argument('--save_dir', type=str, default='./model')
 	parser.add_argument('--nr_steps', type=int, default=30)
-	parser.add_argument('--batch_size', type=int, default=64)
+	parser.add_argument('--batch_size', type=int, default=10)
 	parser.add_argument('--lr', type=float, default=0.001)
 	parser.add_argument('--max_epoch', type=int, default=500)
 	parser.add_argument('--noise_type', type=str, default='bitflip')
