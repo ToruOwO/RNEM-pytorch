@@ -18,105 +18,79 @@ ACTIVATION_FUNCTIONS = {
 
 
 class ReshapeWrapper(nn.Module):
-	def __init__(self, input_size, hidden_size, shape, apply_to):
+	"""
+	Reshape input Tensor to a given shape.
+
+	:param: shape - Torch.size
+	:param: apply_to - whether apply to x or state in __call__
+	"""
+	def __init__(self, shape, apply_to):
 		super(ReshapeWrapper, self).__init__()
-		self.rnn = nn.RNN(input_size, hidden_size)
 		self.shape = shape
 		self.apply_to = apply_to
 
 	def forward(self, x, state):
 		batch_size = x.size()[0]
-		if self.apply_to == "input":
+
+		if self.apply_to == "x":
 			if self.shape == -1:
 				x = x.view(batch_size, -1)
 			else:
 				reshape_size = (batch_size,) + self.shape
 				x = x.view(reshape_size)
-
-			# print("x", x.size())
-			# print("state", state.size())
-
 			return x, state
 
-		elif self.apply_to == "output":
-			x_out, next_state = self.rnn(x, state)
-
-			if self.shape == -1:
-				x_out = x_out.view(batch_size, -1)
-			else:
-				reshape_size = (batch_size,) + self.shape
-				x_out = x_out.view(reshape_size)
-
-			return x_out, next_state
-
 		elif self.apply_to == "state":
-			x_out, next_state = self.rnn(x, state)
-
 			if self.shape == -1:
-				next_state = next_state.view(batch_size, -1)
+				state = state.view(batch_size, -1)
 			else:
 				reshape_size = (batch_size,) + self.shape
-				next_state = next_state.view(reshape_size)
-
-			return x_out, next_state
+				state = state.view(reshape_size)
+			return x, state
 
 		else:
 			raise ValueError("Unknown apply_to: {}".format(self.apply_to))
 
 
 class ActivationFunctionWrapper(nn.Module):
-	def __init__(self, input_size, hidden_size, activation="linear", apply_to="output"):
+	def __init__(self, activation="linear", apply_to="x"):
 		super(ActivationFunctionWrapper, self).__init__()
-		self.rnn = nn.RNN(input_size, hidden_size)
 		self.activation = ACTIVATION_FUNCTIONS[activation]
 		self.apply_to = apply_to
 
 	def forward(self, x, state):
-		if self.apply_to == "input":
+		if self.apply_to == "x":
 			x = self.activation(x)
-			return self.rnn(x, state)
-
-		elif self.apply_to == "output":
-			x_out, next_state = self.rnn(x, state)
-			x_out = self.activation(x_out)
-			return x_out, next_state
+			return x, state
 
 		elif self.apply_to == "state":
-			x_out, next_state = self.rnn(x, state)
-			next_state = self.activation(next_state)
-			return x_out, next_state
+			state = self.activation(state)
+			return x, state
 
 		else:
 			raise ValueError("Unknown apply_to: {}".format(self.apply_to))
 
 
 class LayerNormWrapper(nn.Module):
-	def __init__(self, input_size, hidden_size, apply_to="output"):
+	def __init__(self, apply_to="x"):
 		super(LayerNormWrapper, self).__init__()
-		self.rnn = nn.RNN(input_size, hidden_size)
 		self.apply_to = apply_to
 
 	def forward(self, x, state):
-		if self.apply_to == "input":
+		if self.apply_to == "x":
 			x = F.layer_norm(x)
-			return self.rnn(x, state)
-
-		elif self.apply_to == "output":
-			x_out, next_state = self.rnn(x, state)
-			x_out = F.layer_norm(x_out)
-			return x_out, next_state
+			return x, state
 
 		elif self.apply_to == "state":
-			x_out, next_state = self.rnn(x, state)
-			next_state = F.layer_norm(next_state)
-			return x_out, next_state
+			state = F.layer_norm(state)
+			return x, state
 
 		else:
 			raise ValueError("Unknown apply_to: {}".format(self.apply_to))
 
 
 class InputWrapper(nn.Module):
-	def __init__(self, input_size, hidden_size, output_size=None, fc_output_size=None):
+	def __init__(self, input_size, output_size=None, fc_output_size=None):
 		super(InputWrapper, self).__init__()
 
 		if fc_output_size is None:
@@ -124,28 +98,27 @@ class InputWrapper(nn.Module):
 		else:
 			self.main_layer = nn.Linear(input_size, fc_output_size)
 
-		self.act = ActivationFunctionWrapper(input_size, hidden_size, activation="elu", apply_to="input")
-		self.ln = LayerNormWrapper(input_size, hidden_size, apply_to="input")
-
+		self.ln = LayerNormWrapper(apply_to="x")
+		self.act = ActivationFunctionWrapper("elu", apply_to="x")
 
 	def forward(self, x, state):
-		# apply activation function
-		x, state = self.act(x, state)
+		# apply main layer to only input (x)
+		x = self.main_layer(x)
 
 		# apply layer norm
 		x, state = self.ln(x, state)
 
-		# apply main layer to only input (x)
-		x = self.main_layer(x)
+		# apply activation function
+		x, state = self.act(x, state)
 
 		return x, state
 
 
 class OutputWrapper(nn.Module):
-	def __init__(self, input_size, hidden_size, output_size=None, fc_output_size=None, activation="relu", layer_norm=True):
+	def __init__(self, input_size, output_size=None, fc_output_size=None, activation="relu", layer_norm=True):
 		super(OutputWrapper, self).__init__()
 
-		self.rnn = nn.RNN(input_size, hidden_size)
+		self.fc_output_size = fc_output_size
 
 		if fc_output_size is None:
 			self.main_layer = nn.Conv2d(input_size[-1], output_size, kernel_size=4, stride=2)
@@ -153,30 +126,26 @@ class OutputWrapper(nn.Module):
 			self.main_layer = nn.Linear(input_size, fc_output_size)
 
 		if layer_norm is True:
-			self.ln = LayerNormWrapper(input_size, hidden_size, apply_to="output")
+			self.ln = LayerNormWrapper(apply_to="x")
 
-		self.act = ActivationFunctionWrapper(input_size, hidden_size, activation=activation, apply_to="output")
+		self.act = ActivationFunctionWrapper(activation, apply_to="x")
 
 	def forward(self, x, state):
-		# apply recurrent update
-		output, new_state = self.rnn(x, state)
-
-		projected = None
 		# apply main layer
-		if fc_output_size is None:
+		if self.fc_output_size is None:
 			# resize image before Conv2D
-			resized = F.interpolate(output, (2*output.size()[1], 2*output.size()[1]), mode="bilinear")
+			resized = F.interpolate(x, (2*x.size()[1], 2*x.size()[1]), mode="bilinear")
 			projected = self.main_layer(resized)
 		else:
-			projected = self.main_layer(output)
+			projected = self.main_layer(x)
 
 		# apply layer norm
-		projected, new_state = self.ln(projected, new_state)
+		projected, state = self.ln(projected, state)
 
 		# apply activation function
-		projected, new_state = self.act(projected, new_state)
+		projected, state = self.act(projected, state)
 
-		return projected, new_state
+		return projected, state
 
 
 class R_NEM(nn.Module):
@@ -308,9 +277,9 @@ class R_NEM(nn.Module):
 
 
 class EncoderLayer(nn.Module):
-	def __init__(self, input_size, hidden_size):
+	def __init__(self):
 		super(EncoderLayer, self).__init__()
-		self.reshape1 = ReshapeWrapper(input_size, hidden_size, shape=(64, 64, 1), apply_to="input")
+		self.reshape1 = ReshapeWrapper((64, 64, 1), apply_to="x")
 		self.conv1 = None
 		self.conv2 = None
 		self.conv3 = None
@@ -322,30 +291,30 @@ class EncoderLayer(nn.Module):
 		x, state = self.reshape1(x, state)
 
 		# normal convolution
-		self.conv1 = InputWrapper(x.size(), state.size(), output_size=16)
+		self.conv1 = InputWrapper(x.size(), output_size=16)
 		x, state = self.conv1(x, state)
 
-		self.conv2 = InputWrapper(x.size(), state.size(), output_size=32)
+		self.conv2 = InputWrapper(x.size(), output_size=32)
 		x, state = self.conv2(x, state)
 
-		self.conv3 = InputWrapper(x.size(), state.size(), output_size=64)
+		self.conv3 = InputWrapper(x.size(), output_size=64)
 		x, state = self.conv3(x, state)
 
 		# flatten input
-		self.reshape2 = ReshapeWrapper(x.size(), state.size(), shape=-1, apply_to="input")
+		self.reshape2 = ReshapeWrapper(-1, apply_to="x")
 		x, state = self.reshape2(x, state)
 
 		# linear layer
-		self.fc1 = InputWrapper(x.size(), state.size(), fc_output_size=512)
+		self.fc1 = InputWrapper(x.size(), fc_output_size=512)
 		x, state = self.fc1(x, state)
 
 		return x, state
 
 
 class DecoderLayer(nn.Module):
-	def __init__(self, input_size, hidden_size):
+	def __init__(self, input_size):
 		super(DecoderLayer, self).__init__()
-		self.fc1 = OutputWrapper(input_size, hidden_size, fc_output_size=512)
+		self.fc1 = OutputWrapper(input_size, fc_output_size=512)
 		self.fc2 = None
 		self.reshape1 = None
 		self.r_conv1 = None
@@ -356,29 +325,29 @@ class DecoderLayer(nn.Module):
 	def forward(self, x, state):
 		x, state = self.fc1(x, state)
 
-		self.fc2 = OutputWrapper(x.size(), state.size(), fc_output_size=8*8*64)
+		self.fc2 = OutputWrapper(x.size(), fc_output_size=8*8*64)
 		x, state = self.fc2(x, state)
 
-		self.reshape1 = ReshapeWrapper(x.size(), state.size(), shape=(8, 8, 64), apply_to="output")
+		self.reshape1 = ReshapeWrapper((8, 8, 64), apply_to="x")
 		x, state = self.reshape1(x, state)
 
-		self.r_conv1 = OutputWrapper(x.size(), state.size(), output_size=32)
+		self.r_conv1 = OutputWrapper(x.size(), output_size=32)
 		x, state = self.r_conv1(x, state)
 
-		self.r_conv2 = OutputWrapper(x.size(), state.size(), output_size=16)
+		self.r_conv2 = OutputWrapper(x.size(), output_size=16)
 		x, state = self.r_conv2(x, state)
 
-		self.r_conv3 = OutputWrapper(x.size(), state.size(), output_size=1, activation="sigmoid", layer_norm=False)
+		self.r_conv3 = OutputWrapper(x.size(), output_size=1, activation="sigmoid", layer_norm=False)
 		x, state = self.r_conv3(x, state)
 
-		self.reshape2 = ReshapeWrapper(x.size(), state.size(), shape=-1, apply_to="output")
+		self.reshape2 = ReshapeWrapper(-1, apply_to="x")
 		x, state = self.reshape2(x, state)
 
 		return x, state
 
 
 class RecurrentLayer(nn.Module):
-	def __init__(self, K):
+	def __init__(self, hidden_size, K):
 		super(RecurrentLayer, self).__init__()
 		self.r_nem = R_NEM(K)
 		self.layer_norm = None
@@ -388,25 +357,25 @@ class RecurrentLayer(nn.Module):
 	def forward(self, x, state):
 		x, state = self.r_nem(x, state)
 
-		self.layer_norm = LayerNormWrapper(x.size(), state.size(), apply_to="output")
+		self.layer_norm = LayerNormWrapper(apply_to="x")
 		x, state = self.layer_norm(x, state)
 
-		self.act1 = ActivationFunctionWrapper(x.size(), state.size(), activation="sigmoid", apply_to="state")
+		self.act1 = ActivationFunctionWrapper("sigmoid", apply_to="state")
 		x, state = self.act1(x, state)
 
-		self.act2 = ActivationFunctionWrapper(x.size(), state.size(), activation="sigmoid", apply_to="output")
+		self.act2 = ActivationFunctionWrapper("sigmoid", apply_to="x")
 		x, state = self.act2(x, state)
 
 		return x, state
 
 
 class InnerRNN(nn.Module):
-	def __init__(self, input_size, hidden_size, K, num_layers=1):
+	def __init__(self, input_size, hidden_size, K):
 		super(InnerRNN, self).__init__()
 
-		self.encoder = EncoderLayer(input_size, hidden_size)   # (W * H * C, 250)
-		self.recurrent = RecurrentLayer(K)
-		self.decoder = DecoderLayer(input_size, hidden_size)
+		self.encoder = EncoderLayer()
+		self.recurrent = RecurrentLayer(hidden_size, K)
+		self.decoder = DecoderLayer(input_size)
 
 	def forward(self, x, state):
 		x, state = self.encoder(x, state)
