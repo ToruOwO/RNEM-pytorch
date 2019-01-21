@@ -21,6 +21,8 @@ def add_noise(data, noise_type=None, noise_prob=0.2):
 	"""
 	Add noise to the input image to avoid trivial solutions
 	in case of overcapacity.
+
+	shape of returned data: (B, K, W, H, C)
 	"""
 	if noise_type is None:
 		return data
@@ -41,7 +43,7 @@ def add_noise(data, noise_type=None, noise_prob=0.2):
 			corrupted.view(shape)
 			corrupted_data.append(corrupted)
 
-		corrupted_data = torch.stack(corrupted_data, dim=1)
+		corrupted_data = torch.stack(corrupted_data)
 		# print(corrupted_data.size())
 
 		return corrupted_data
@@ -156,6 +158,11 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	for t in range(args.nr_steps):
 		# model should predict the next frame
 		inputs = (input_data[t], target_data[t+1])
+
+		assert len(input_data[t]) == len(target_data[t + 1]), \
+			"Input data and target data must have the same shape"
+
+		# print("inputs", inputs, inputs[0].size(), inputs[1].size())
 
 		# forward pass
 		hidden_state, output = nem_model(inputs, hidden_state)

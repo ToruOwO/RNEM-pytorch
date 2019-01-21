@@ -75,10 +75,10 @@ class Data(Dataset):
 		return data
 
 	def __getitem__(self, idx):
-		if idx >= batch_size:
+		if idx >= self.data_shape[0]:
 			return None
 
-		d = self.data[:, idx, :, :, :, :]
+		d = self.data[idx, :, :, :, :, :]
 
 		# convert data to PyTorch tensor
 		t = torch.tensor(d.astype(np.float32))
@@ -86,7 +86,7 @@ class Data(Dataset):
 		return t
 
 	def __len__(self):
-		return self.data_shape[1]
+		return self.data_shape[0]
 
 
 # train_data = Data('balls3curtain64', 'training')
