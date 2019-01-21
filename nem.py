@@ -20,6 +20,14 @@ class NEM(nn.Module):
 		self.gamma_size = gamma_size
 
 	def init_state(self, batch_size, K,  dtype=torch.float32):
+		"""
+		Return a randomly initialized hidden state tuple (h, pred, gamma)
+
+		:return:
+			h (B*K, hidden_size)
+			pred (B, K, W, H, C)
+			gamma (B, K, W, H, 1)
+		"""
 		h = torch.zeros(batch_size*K, self.hidden_size, dtype=torch.float32)
 
 		pred = torch.zeros(batch_size, K, *self.input_size, dtype=torch.float32)
@@ -28,13 +36,13 @@ class NEM(nn.Module):
 		gamma_shape = [batch_size, K] + list(self.gamma_size)
 		gamma = np.absolute(np.random.normal(size=gamma_shape))
 		gamma = torch.from_numpy(gamma.astype(np.float32))
-		gamma = torch.sum(gamma, dim=1, keepdim=True)
+		gamma /= torch.sum(gamma, dim=1, keepdim=True)
 
 		# init with all 1 if K = 1
 		if K == 1:
 			gamma = torch.ones_like(gamma)
 
-		print("h, pred, gamma", h.size(), pred.size(), gamma.size())
+		# print("h, pred, gamma", h.size(), pred.size(), gamma.size())
 
 		return h, pred, gamma
 
