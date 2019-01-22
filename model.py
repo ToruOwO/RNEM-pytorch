@@ -78,11 +78,11 @@ class LayerNormWrapper(nn.Module):
 
 	def forward(self, x, state):
 		if self.apply_to == "x":
-			x = F.layer_norm(x, x.size())
+			x = F.layer_norm(x, x.size()[1:])
 			return x, state
 
 		elif self.apply_to == "state":
-			state = F.layer_norm(state, state.size())
+			state = F.layer_norm(state, state.size()[1:])
 			return x, state
 
 		else:
