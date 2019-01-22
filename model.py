@@ -132,7 +132,7 @@ class OutputWrapper(nn.Module):
 		if fc_output_size is None:
 			self.main_layer = nn.Conv2d(input_size[-1], output_size, kernel_size=4, stride=2)
 		else:
-			self.main_layer = nn.Linear(input_size, fc_output_size)
+			self.main_layer = nn.Linear(input_size[-1], fc_output_size)
 
 		if layer_norm is True:
 			self.ln = LayerNormWrapper(apply_to="x")
@@ -142,7 +142,7 @@ class OutputWrapper(nn.Module):
 	def forward(self, x, state):
 		# apply main layer
 		if self.fc_output_size is None:
-			# interpolate image before Conv2D
+			# Conv2d
 			resized = F.interpolate(x, (x.size()[0], 2*x.size()[1], 2*x.size()[2], x.size()[3]), mode="bilinear")
 
 			# since input size for Conv2D layer is (B, C, H, W),
@@ -153,8 +153,8 @@ class OutputWrapper(nn.Module):
 			# reshape "projected" back to (B, W, H, C)
 			projected = projected.permute(0, 3, 2, 1)
 		else:
-			projected = self.main_layer(x.permute(0, 3, 2, 1))
-			projected = projected.permute(0, 3, 2, 1)
+			# Linear
+			projected = self.main_layer(x)
 
 		# apply layer norm
 		projected, state = self.ln(projected, state)
@@ -339,9 +339,9 @@ class EncoderLayer(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-	def __init__(self, input_size):
+	def __init__(self):
 		super(DecoderLayer, self).__init__()
-		self.fc1 = OutputWrapper(input_size, fc_output_size=512)
+		self.fc1 = None
 		self.fc2 = None
 		self.reshape1 = None
 		self.r_conv1 = None
@@ -350,6 +350,7 @@ class DecoderLayer(nn.Module):
 		self.reshape2 = None
 
 	def forward(self, x, state):
+		self.fc1 = OutputWrapper(x.size(), fc_output_size=512)
 		x, state = self.fc1(x, state)
 
 		self.fc2 = OutputWrapper(x.size(), fc_output_size=8*8*64)
@@ -391,16 +392,17 @@ class RecurrentLayer(nn.Module):
 
 
 class InnerRNN(nn.Module):
-	def __init__(self, input_size, K):
+	def __init__(self, K):
 		super(InnerRNN, self).__init__()
 
 		self.encoder = EncoderLayer()
 		self.recurrent = RecurrentLayer(K)
-		self.decoder = DecoderLayer(input_size)
+		self.decoder = DecoderLayer()
 
 	def forward(self, x, state):
 		x, state = self.encoder(x, state)
 		x, state = self.recurrent(x, state)
 		x, state = self.decoder(x, state)
+		print("decoder x, state", x.size(), state.size())
 
 		return x, state
