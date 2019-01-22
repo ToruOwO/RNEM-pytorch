@@ -8,16 +8,16 @@ import torch.distributions as dist
 class NEM(nn.Module):
 	def __init__(self, inner_rnn, input_size, hidden_size, output_size):
 		super(NEM, self).__init__()
-		self.inner_rnn = inner_rnn # InnerRNN defined in model.py
+		self.inner_rnn = inner_rnn       # InnerRNN defined in model.py
 
 		gamma_size = input_size[:-1] + (1,)
 		# rnn_input_size = (hidden_size, input_size, gamma_size)
 		# rnn_hidden_size = (output_size, input_size, gamma_size)
 		# self.rnn = nn.RNN(rnn_input_size, rnn_hidden_size)
 
-		self.hidden_size = hidden_size
-		self.input_size = input_size
-		self.gamma_size = gamma_size
+		self.hidden_size = hidden_size   # 250
+		self.input_size = input_size     # (W, H, C)
+		self.gamma_size = gamma_size     # (W, H, 1)
 
 	def init_state(self, batch_size, K,  dtype=torch.float32):
 		"""
@@ -28,9 +28,9 @@ class NEM(nn.Module):
 			pred (B, K, W, H, C)
 			gamma (B, K, W, H, 1)
 		"""
-		h = torch.zeros(batch_size*K, self.hidden_size, dtype=torch.float32)
+		h = torch.zeros(batch_size*K, self.hidden_size, dtype=dtype)
 
-		pred = torch.zeros(batch_size, K, *self.input_size, dtype=torch.float32)
+		pred = torch.zeros(batch_size, K, *self.input_size, dtype=dtype)
 
 		# initialize with Gaussian distribution
 		gamma_shape = [batch_size, K] + list(self.gamma_size)

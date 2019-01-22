@@ -78,11 +78,11 @@ class LayerNormWrapper(nn.Module):
 
 	def forward(self, x, state):
 		if self.apply_to == "x":
-			x = F.layer_norm(x)
+			x = F.layer_norm(x, x.size())
 			return x, state
 
 		elif self.apply_to == "state":
-			state = F.layer_norm(state)
+			state = F.layer_norm(state, state.size())
 			return x, state
 
 		else:
@@ -96,7 +96,7 @@ class InputWrapper(nn.Module):
 		if fc_output_size is None:
 			self.main_layer = nn.Conv2d(input_size[-1], output_size, kernel_size=4, stride=2)
 		else:
-			self.main_layer = nn.Linear(input_size, fc_output_size)
+			self.main_layer = nn.Linear(input_size[-1], fc_output_size)
 
 		self.ln = LayerNormWrapper(apply_to="x")
 		self.act = ActivationFunctionWrapper("elu", apply_to="x")
@@ -106,11 +106,13 @@ class InputWrapper(nn.Module):
 
 		# since input size for Conv2D layer is (B, C, H, W),
 		# reshape x from (B, W, H, C) to (B, C, W, H)
-		x = self.main_layer(x.permute(0, 3, 2, 1))
+		reshape_dim = tuple([0] + [i for i in range(len(x.size())-1, 0, -1)])
+
+		x = self.main_layer(x.permute(reshape_dim))
 
 		# since output size for Conv2D layer is (B, C, H, W),
 		# reshape output back to (B, W, H, C)
-		x = x.permute(0, 3, 2, 1)
+		x = x.permute(reshape_dim)
 
 		# apply layer norm
 		x, state = self.ln(x, state)
@@ -164,33 +166,16 @@ class OutputWrapper(nn.Module):
 
 
 class R_NEM(nn.Module):
-	def __init__(self, K, size=250):
+	def __init__(self, K, fc_size=250, last_fc_size=100):
 		super(R_NEM, self).__init__()
 
-		self.size = size
+		self.fc_size = fc_size
+		self.last_fc_size = last_fc_size
 
-		self.encoder = nn.Sequential(
-			nn.Linear(size, 250),
-			nn.ReLU(),
-			nn.LayerNorm(250)
-		)
-		self.core = nn.Sequential(
-			nn.Linear(250, 250),
-			nn.ReLU(),
-			nn.LayerNorm(250)
-		)
-		self.context = nn.Sequential(
-			nn.Linear(250, 250),
-			nn.ReLU(),
-			nn.LayerNorm(250)
-		)
-		self.attention = nn.Sequential(
-			nn.Linear(250, 100),
-			nn.Tanh(),
-			nn.LayerNorm(250),
-			nn.Linear(100, 1),
-			nn.Sigmoid()
-		)
+		self.encoder = None
+		self.core = None
+		self.context = None
+		self.attention = None
 
 		assert K > 1
 		self.K = K
@@ -202,7 +187,7 @@ class R_NEM(nn.Module):
 
 	def forward(self, x, state):
 		"""
-		input: [B X K, M]
+		x: [B X K, M]
 		state: [B x K, H]
 
 		b: batch_size
@@ -230,8 +215,14 @@ class R_NEM(nn.Module):
 		"""
 		b, k, m = self.get_shapes(x)
 
+		self.encoder = nn.Sequential(
+			nn.Linear(state.size()[-1], self.fc_size),
+			nn.LayerNorm(self.fc_size),
+			nn.ReLU()
+		)
+
 		# encode theta
-		state1 = self.encoder(state)
+		state1 = self.encoder(state)   # (b*k, h1)
 
 		# reshape theta to be used for context
 		h1 = state1.size()[1]
@@ -250,7 +241,7 @@ class R_NEM(nn.Module):
 			csu = []
 			for i in range(k):
 				selector = [j for j in range(k) if j != i]
-				c = list(np.take(state1rl, selector)) # list of length k-1 of (b, h1)
+				c = list(np.take(state1rl, selector))   # list of length k-1 of (b, h1)
 				c = torch.stack(c, dim=1)
 				csu.append(c)
 
@@ -265,28 +256,49 @@ class R_NEM(nn.Module):
 		concat = torch.cat([fsr, csr], dim=1)   # (b*k*(k-1), 2*h1)
 
 		# core
-		core_out = self.core(concat)
+		self.core = nn.Sequential(
+			nn.Linear(concat.size()[-1], self.fc_size),
+			nn.LayerNorm(self.fc_size),
+			nn.ReLU()
+		)
+
+		core_out = self.core(concat)   # (b*k*(k-1), h1)
 
 		# context; obtained from core_out
-		context_out = self.context(core_out)
+		self.context = nn.Sequential(
+			nn.Linear(core_out.size()[-1], self.fc_size),
+			nn.LayerNorm(self.fc_size),
+			nn.ReLU()
+		)
 
-		h2 = 250
+		context_out = self.context(core_out)   # (b*k*(k-1), h2)
+
+		h2 = self.fc_size
 		contextr = context_out.view(b*k, k-1, h2)   # (b*k, k-1, h2)
 
 		# attention coefficients; obtained from core_out
-		attention_out = self.attention(core_out)
+
+		self.attention = nn.Sequential(
+			nn.Linear(core_out.size()[-1], self.last_fc_size),
+			nn.LayerNorm(self.last_fc_size),
+			nn.Tanh(),
+			nn.Linear(self.last_fc_size, 1),
+			nn.Sigmoid()
+		)
+
+		attention_out = self.attention(core_out)   # (b*k*(k-1), 1)
 
 		# produce effect as sum(context_out * attention_out)
 		attentionr = attention_out.view(b*k, k-1, 1)
-		effect_sum = torch.sum(contextr * attentionr, dim=1)
+		effect_sum = torch.sum(contextr * attentionr, dim=1)   # (b*k, h2)
 
 		# calculate new state (where the input from encoder comes in)
 		# concatenate (state1, effect_sum, inputs)
-		total = torch.cat([state1, effect_sum, inputs], dim=1)   # (b*k, h+h2+m)
+		total = torch.cat([state1, effect_sum, x], dim=1)   # (b*k, h1+h2+m)
 
 		# produce recurrent update
-		out_fc = nn.Linear((b*k, h+h2+m), self.size) # (b*k, h)
-		new_state = out_fc(total)
+		out_fc = nn.Linear(h1+h2+m, self.fc_size)
+		new_state = out_fc(total)   # (b*k, h)
 
 		return new_state, new_state
 
@@ -362,34 +374,28 @@ class DecoderLayer(nn.Module):
 
 
 class RecurrentLayer(nn.Module):
-	def __init__(self, hidden_size, K):
+	def __init__(self, K):
 		super(RecurrentLayer, self).__init__()
 		self.r_nem = R_NEM(K)
-		self.layer_norm = None
-		self.act1 = None
-		self.act2 = None
+		self.layer_norm = LayerNormWrapper(apply_to="x")
+		self.act1 = ActivationFunctionWrapper("sigmoid", apply_to="state")
+		self.act2 = ActivationFunctionWrapper("sigmoid", apply_to="x")
 
 	def forward(self, x, state):
 		x, state = self.r_nem(x, state)
-
-		self.layer_norm = LayerNormWrapper(apply_to="x")
 		x, state = self.layer_norm(x, state)
-
-		self.act1 = ActivationFunctionWrapper("sigmoid", apply_to="state")
 		x, state = self.act1(x, state)
-
-		self.act2 = ActivationFunctionWrapper("sigmoid", apply_to="x")
 		x, state = self.act2(x, state)
 
 		return x, state
 
 
 class InnerRNN(nn.Module):
-	def __init__(self, input_size, hidden_size, K):
+	def __init__(self, input_size, K):
 		super(InnerRNN, self).__init__()
 
 		self.encoder = EncoderLayer()
-		self.recurrent = RecurrentLayer(hidden_size, K)
+		self.recurrent = RecurrentLayer(K)
 		self.decoder = DecoderLayer(input_size)
 
 	def forward(self, x, state):
