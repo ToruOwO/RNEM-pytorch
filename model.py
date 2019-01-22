@@ -103,7 +103,14 @@ class InputWrapper(nn.Module):
 
 	def forward(self, x, state):
 		# apply main layer to only input (x)
-		x = self.main_layer(x)
+
+		# since input size for Conv2D layer is (B, C, H, W),
+		# reshape x from (B, W, H, C) to (B, C, W, H)
+		x = self.main_layer(x.permute(0, 3, 2, 1))
+
+		# since output size for Conv2D layer is (B, C, H, W),
+		# reshape output back to (B, W, H, C)
+		x = x.permute(0, 3, 2, 1)
 
 		# apply layer norm
 		x, state = self.ln(x, state)
@@ -133,11 +140,19 @@ class OutputWrapper(nn.Module):
 	def forward(self, x, state):
 		# apply main layer
 		if self.fc_output_size is None:
-			# resize image before Conv2D
-			resized = F.interpolate(x, (2*x.size()[1], 2*x.size()[1]), mode="bilinear")
-			projected = self.main_layer(resized)
+			# interpolate image before Conv2D
+			resized = F.interpolate(x, (x.size()[0], 2*x.size()[1], 2*x.size()[2], x.size()[3]), mode="bilinear")
+
+			# since input size for Conv2D layer is (B, C, H, W),
+			# reshape "resized" from (B, W, H, C) to (B, C, W, H)
+			projected = self.main_layer(resized.permute(0, 3, 2, 1))
+
+			# since output size for Conv2D layer is (B, C, H, W),
+			# reshape "projected" back to (B, W, H, C)
+			projected = projected.permute(0, 3, 2, 1)
 		else:
-			projected = self.main_layer(x)
+			projected = self.main_layer(x.permute(0, 3, 2, 1))
+			projected = projected.permute(0, 3, 2, 1)
 
 		# apply layer norm
 		projected, state = self.ln(projected, state)
