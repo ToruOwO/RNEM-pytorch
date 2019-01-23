@@ -9,7 +9,6 @@ import torch.distributions as dist
 import torch.utils.data
 
 from data import Data
-from model import InnerRNN
 from nem import NEM
 
 # Device configuration
@@ -123,17 +122,11 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	# compute Bernoulli prior of pixels
 	prior = compute_bernoulli_prior()
 
-	# use binomial cross entropy as intra loss
-	intra_criterion = nn.BCELoss()
-
-	# use KL divergence as inter loss
-	inter_criterion = nn.KLDivLoss()
+	# outputs
+	hidden_state = nem_model.init_state(input_shape[1], args.k)
 
 	# use Adam optimizer
 	optimizer = optim.Adam(nem_model.parameters(), lr=args.lr)
-
-	# outputs
-	hidden_state = nem_model.init_state(input_shape[1], args.k)
 
 	# record losses
 	total_losses = []
@@ -145,6 +138,8 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	r_other_losses = []
 	r_other_ub_losses = []
 
+	loss_step_weights = [1.0] * args.nr_steps
+
 	outputs = [hidden_state]
 
 	if is_training:
@@ -152,7 +147,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 
 	losses = 0.0
 
-	for t in range(args.nr_steps):
+	for t, loss_weight in enumerate(loss_step_weights):
 		# model should predict the next frame
 		inputs = (input_data[t], target_data[t+1])
 
@@ -175,8 +170,8 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 		total_ub_loss, intra_ub_loss, inter_ub_loss, r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss \
 			= compute_outer_ub_loss(pred, target_data[t+1], prior, collision=collision)
 
-		total_loss = intra_criterion(output, labels) + inter_criterion(output, labels)
-		losses += total_loss
+		# total_loss = intra_criterion(output, labels) + inter_criterion(output, labels)
+		# losses += total_loss
 
 		total_losses.append(total_loss)
 		total_ub_losses.append(total_ub_loss)
@@ -187,30 +182,42 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 		other_losses.append(torch.stack((total_loss, intra_loss, inter_loss)))
 		other_ub_losses.append(torch.stack((total_ub_loss, intra_ub_loss, inter_ub_loss)))
 
-
 		r_other_losses.append(torch.stack((r_total_loss, r_intra_loss, r_inter_loss)))
 		r_other_ub_losses.append(torch.stack((r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss)))
 
+		outputs.append(output)   # thetas, preds, gammas
+
 		# backward pass and optimize
 		optimizer.zero_grad()
-		loss.backward()
+		total_loss.backward()
 		optimizer.step()
 
-		# print log
-		if (i+1) % 100 == 0:
-			print('Epoch [{}/{}], Loss: {:.4f}'.format(epoch+1, num_epochs, loss.item()))
+		# # print log
+		# if (t+1) % 100 == 0:
+		# 	print('Epoch [{}/{}], Loss: {:.4f}'.format(epoch+1, num_epochs, total_loss.item()))
 
-	losses /= len(input_data)
-	print('%s [%d/%d] Loss: %.4f, Best valid: %.4f' %
-          (phase, epoch, args.n_epoch, losses, best_valid_loss))
+	# losses /= len(input_data)
+	# print('%s [%d/%d] Loss: %.4f, Best valid: %.4f' %
+    #       (phase, epoch, args.n_epoch, losses, best_valid_loss))
 
+	# collect outputs
 	thetas, preds, gammas = zip(*outputs)
 	thetas = torch.stack((thetas,))
 	preds = torch.stack((preds,))
 	gammas = torch.stack((gammas,))
 
-	return loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
-		 r_other_losses, r_other_ub_losses
+	other_losses = torch.stack((other_losses,))
+	other_ub_losses = torch.stack((other_ub_losses,))
+	r_other_losses = torch.stack((r_other_losses,))
+	r_other_ub_losses = torch.stack((r_other_ub_losses,))
+
+	total_loss = torch.sum(torch.stack((total_losses,))) / np.sum(loss_step_weights)
+	total_ub_loss = torch.sum(torch.stack((total_ub_losses,))) / np.sum(loss_step_weights)
+	r_total_loss = torch.sum(torch.stack((r_total_losses,))) / np.sum(loss_step_weights)
+	r_total_ub_loss = torch.sum(torch.stack((r_total_ub_losses,))) / np.sum(loss_step_weights)
+
+	return total_loss, total_ub_loss, r_total_loss, r_total_ub_loss, thetas, preds, gammas, other_losses, \
+		   other_ub_losses, r_other_losses, r_other_ub_losses
 
 
 def main():
@@ -248,6 +255,9 @@ def main():
 														   features,
 														   collisions=train_inputs.get('collisions', None))
 
+
+
+
 		# validation phase
 		features_corrupted_valid = add_noise(valid_inputs['features'], noise_type=args.noise_type)
 		features_valid = valid_inputs['features']
@@ -262,11 +272,11 @@ def main():
 			best_valid_loss = loss
 			best_valid_epoch = epoch
 			print("    Best validation loss improved to %.03f" % best_valid_loss)
-			torch.save(model.state_dict(), os.path.abspath(os.path.join(log_dir, 'best.pth')))
+			torch.save(nem_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'best.pth')))
 			print("    Saved to:", args.save_dir)
 
 		if epoch % args.log_per_iter == 0:
-			torch.save(model.state_dict(), os.path.abspath(os.path.join(log_dir, 'epoch_{}.pth'.format(epoch))))
+			torch.save(nem_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'epoch_{}.pth'.format(epoch))))
 
 		if np.isnan(loss):
 			print('Early Stopping because validation loss is nan')
