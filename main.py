@@ -124,6 +124,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 
 	# outputs
 	hidden_state = nem_model.init_state(input_shape[1], args.k)
+	nem_model.hidden_state = hidden_state
 
 	# use Adam optimizer
 	optimizer = optim.Adam(nem_model.parameters(), lr=args.lr)

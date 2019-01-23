@@ -15,6 +15,11 @@ class NEM(nn.Module):
 		self.input_size = input_size     # (W, H, C)
 		self.gamma_size = gamma_size     # (W, H, 1)
 
+		h, pred, gamma = self.init_state(10, 5)
+		self.h = nn.Parameter(h)
+		self.pred = nn.Parameter(pred)
+		self.gamma = nn.Parameter(gamma)
+
 	def init_state(self, batch_size, K, dtype=torch.float32):
 		"""
 		Return a randomly initialized hidden state tuple (h, pred, gamma)
