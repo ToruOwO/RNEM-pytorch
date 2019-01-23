@@ -134,6 +134,7 @@ class OutputWrapper(nn.Module):
 		else:
 			self.main_layer = nn.Linear(input_size[-1], fc_output_size)
 
+		self.ln = None
 		if layer_norm is True:
 			self.ln = LayerNormWrapper(apply_to="x")
 
@@ -143,11 +144,12 @@ class OutputWrapper(nn.Module):
 		# apply main layer
 		if self.fc_output_size is None:
 			# Conv2d
-			resized = F.interpolate(x, (x.size()[0], 2*x.size()[1], 2*x.size()[2], x.size()[3]), mode="bilinear")
-
 			# since input size for Conv2D layer is (B, C, H, W),
 			# reshape "resized" from (B, W, H, C) to (B, C, W, H)
-			projected = self.main_layer(resized.permute(0, 3, 2, 1))
+			resized = x.permute(0, 3, 2, 1)
+			resized = F.interpolate(resized, (2*x.size()[1], 2*x.size()[2]), mode="bilinear")
+
+			projected = self.main_layer(resized)
 
 			# since output size for Conv2D layer is (B, C, H, W),
 			# reshape "projected" back to (B, W, H, C)
@@ -156,8 +158,9 @@ class OutputWrapper(nn.Module):
 			# Linear
 			projected = self.main_layer(x)
 
-		# apply layer norm
-		projected, state = self.ln(projected, state)
+		if self.ln:
+			# apply layer norm
+			projected, state = self.ln(projected, state)
 
 		# apply activation function
 		projected, state = self.act(projected, state)
