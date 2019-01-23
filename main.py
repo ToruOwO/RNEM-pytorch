@@ -118,9 +118,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	W, H, C = (x for x in input_shape[-3:])
 
 	# set up initial inner RNN and NEM model
-	inner_input_size = W * H * C
-	inner_model = InnerRNN(K=args.k)
-	nem_model = NEM(inner_model, input_size=(W, H, C), hidden_size=args.inner_hidden_size, output_size=inner_input_size)
+	nem_model = NEM(k=args.k, input_size=(W, H, C), hidden_size=args.inner_hidden_size)
 
 	# compute Bernoulli prior of pixels
 	prior = compute_bernoulli_prior()

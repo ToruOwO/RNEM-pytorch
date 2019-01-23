@@ -1,19 +1,15 @@
 import numpy as np
-import utils
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import torch.distributions as dist
+
+from model import InnerRNN
 
 class NEM(nn.Module):
-	def __init__(self, inner_rnn, input_size, hidden_size, output_size):
+	def __init__(self, k, input_size, hidden_size):
 		super(NEM, self).__init__()
-		self.inner_rnn = inner_rnn       # InnerRNN defined in model.py
+		self.inner_rnn = InnerRNN(K=k)
 
 		gamma_size = input_size[:-1] + (1,)
-		# rnn_input_size = (hidden_size, input_size, gamma_size)
-		# rnn_hidden_size = (output_size, input_size, gamma_size)
-		# self.rnn = nn.RNN(rnn_input_size, rnn_hidden_size)
 
 		self.hidden_size = hidden_size   # 250
 		self.input_size = input_size     # (W, H, C)
