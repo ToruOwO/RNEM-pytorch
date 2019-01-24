@@ -10,6 +10,7 @@ import torch.utils.data
 
 from data import Data
 from nem import NEM
+from utils import BCELoss, KLDivLoss
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -57,10 +58,10 @@ def compute_bernoulli_prior():
 
 def compute_outer_loss(mu, gamma, target, prior, collision):
 	# use binomial cross entropy as intra loss
-	intra_criterion = nn.BCELoss()
+	intra_criterion = BCELoss()
 
 	# use KL divergence as inter loss
-	inter_criterion = nn.KLDivLoss()
+	inter_criterion = KLDivLoss()
 
 	intra_loss = intra_criterion(mu, target)
 	inter_loss = inter_criterion(prior, mu)
@@ -82,13 +83,14 @@ def compute_outer_loss(mu, gamma, target, prior, collision):
 
 
 def compute_outer_ub_loss(pred, target, prior, collision):
-	max_pred = torch.max(pred, dim=1, keepdim=True)
+	max_pred, _ = torch.max(pred, dim=1)
+	max_pred = torch.unsqueeze(max_pred, 1)
 
 	# use binomial cross entropy as intra loss
 	intra_criterion = nn.BCELoss()
 
 	# use KL divergence as inter loss
-	inter_criterion = nn.KLDivLoss()
+	inter_criterion = KLDivLoss()
 
 	intra_ub_loss = intra_criterion(max_pred, target)
 	inter_ub_loss = inter_criterion(prior, max_pred)
@@ -190,7 +192,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 
 		# backward pass and optimize
 		optimizer.zero_grad()
-		total_loss.backward()
+		total_loss.backward(retain_graph=True)
 		optimizer.step()
 
 		# # print log

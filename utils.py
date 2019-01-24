@@ -1,3 +1,6 @@
+import torch
+import torch.nn as nn
+
 import os
 
 def create_directory(dir_name):
@@ -15,3 +18,20 @@ def clear_directory(dir_name, recursive=False):
 				os.unlink(fpath)
 		except Exception as e:
 			print(e)
+
+class BCELoss(nn.Module):
+	def __init__(self):
+		super(BCELoss, self).__init__()
+
+	def forward(self, y, t):
+		clipped_y = torch.clamp(y, 1e-6, 1. - 1.e-6)
+		return -(t * torch.log(clipped_y) + (1. - t) * torch.log(1. - clipped_y))
+
+
+# compute KL(p1, p2)
+class KLDivLoss(nn.Module):
+	def __init__(self):
+		super(KLDivLoss, self).__init__()
+
+	def forward(self, p1, p2):
+		return p1 * torch.log(torch.clamp(p1 /torch.clamp(p2, 1e-6, 1e6), 1e-6, 1e6)) + (1 - p1) * torch.log(torch.clamp((1-p1)/torch.clamp(1-p2, 1e-6, 1e6), 1e-6, 1e6))
