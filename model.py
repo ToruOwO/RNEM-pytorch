@@ -94,7 +94,7 @@ class InputWrapper(nn.Module):
 		super(InputWrapper, self).__init__()
 
 		if fc_output_size is None:
-			self.main_layer = nn.Conv2d(input_size[-1], output_size, kernel_size=4, stride=2)
+			self.main_layer = nn.Conv2d(input_size[-1], output_size, kernel_size=4, stride=2, padding=1)
 		else:
 			self.main_layer = nn.Linear(input_size[-1], fc_output_size)
 
@@ -130,7 +130,7 @@ class OutputWrapper(nn.Module):
 		self.fc_output_size = fc_output_size
 
 		if fc_output_size is None:
-			self.main_layer = nn.Conv2d(input_size[-1], output_size, kernel_size=4, stride=2)
+			self.main_layer = nn.Conv2d(input_size[-1], output_size, kernel_size=4, stride=2, padding=1)
 		else:
 			self.main_layer = nn.Linear(input_size[-1], fc_output_size)
 
@@ -147,7 +147,7 @@ class OutputWrapper(nn.Module):
 			# since input size for Conv2D layer is (B, C, H, W),
 			# reshape "resized" from (B, W, H, C) to (B, C, W, H)
 			resized = x.permute(0, 3, 2, 1)
-			resized = F.interpolate(resized, (2*x.size()[1], 2*x.size()[2]), mode="bilinear")
+			resized = F.interpolate(resized, (4*x.size()[1], 4*x.size()[2]), mode="bilinear")
 
 			projected = self.main_layer(resized)
 
