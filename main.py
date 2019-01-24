@@ -146,6 +146,8 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 
 	if is_training:
 		nem_model.train()
+	else:
+		nem_model.eval()
 
 	losses = 0.0
 
