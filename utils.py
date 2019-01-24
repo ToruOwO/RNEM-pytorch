@@ -14,7 +14,7 @@ def clear_directory(dir_name, recursive=False):
 			if os.path.isfile(fpath):
 				os.unlink(fpath)
 			elif recursive and os.path.isdir(fpath):
-				delete_directory(fpath, recursive)
+				clear_directory(fpath, recursive)
 				os.unlink(fpath)
 		except Exception as e:
 			print(e)

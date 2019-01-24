@@ -406,6 +406,5 @@ class InnerRNN(nn.Module):
 		x, state = self.encoder(x, state)
 		x, state = self.recurrent(x, state)
 		x, state = self.decoder(x, state)
-		print("decoder x, state", x.size(), state.size())
 
 		return x, state

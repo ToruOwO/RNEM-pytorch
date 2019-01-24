@@ -170,11 +170,9 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 		total_loss, intra_loss, inter_loss, r_total_loss, r_intra_loss, r_inter_loss \
 			= compute_outer_loss(pred, gamma, target_data[t+1], prior, collision=collision)
 
+		# compute estimated loss upper bound (which doesn't use E-step)
 		total_ub_loss, intra_ub_loss, inter_ub_loss, r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss \
 			= compute_outer_ub_loss(pred, target_data[t+1], prior, collision=collision)
-
-		# total_loss = intra_criterion(output, labels) + inter_criterion(output, labels)
-		# losses += total_loss
 
 		total_losses.append(total_loss)
 		total_ub_losses.append(total_ub_loss)
@@ -205,22 +203,22 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 
 	# collect outputs
 	thetas, preds, gammas = zip(*outputs)
-	thetas = torch.stack((thetas,))
-	preds = torch.stack((preds,))
-	gammas = torch.stack((gammas,))
+	thetas = torch.stack(thetas)
+	preds = torch.stack(preds)
+	gammas = torch.stack(gammas)
 
-	other_losses = torch.stack((other_losses,))
-	other_ub_losses = torch.stack((other_ub_losses,))
-	r_other_losses = torch.stack((r_other_losses,))
-	r_other_ub_losses = torch.stack((r_other_ub_losses,))
+	other_losses = torch.stack(other_losses)
+	other_ub_losses = torch.stack(other_ub_losses)
+	r_other_losses = torch.stack(r_other_losses)
+	r_other_ub_losses = torch.stack(r_other_ub_losses)
 
-	total_loss = torch.sum(torch.stack((total_losses,))) / np.sum(loss_step_weights)
-	total_ub_loss = torch.sum(torch.stack((total_ub_losses,))) / np.sum(loss_step_weights)
-	r_total_loss = torch.sum(torch.stack((r_total_losses,))) / np.sum(loss_step_weights)
-	r_total_ub_loss = torch.sum(torch.stack((r_total_ub_losses,))) / np.sum(loss_step_weights)
+	total_loss = torch.sum(torch.stack(total_losses)) / np.sum(loss_step_weights)
+	total_ub_loss = torch.sum(torch.stack(total_ub_losses)) / np.sum(loss_step_weights)
+	r_total_loss = torch.sum(torch.stack(r_total_losses)) / np.sum(loss_step_weights)
+	r_total_ub_loss = torch.sum(torch.stack(r_total_ub_losses)) / np.sum(loss_step_weights)
 
 	return total_loss, total_ub_loss, r_total_loss, r_total_ub_loss, thetas, preds, gammas, other_losses, \
-		   other_ub_losses, r_other_losses, r_other_ub_losses
+		   other_ub_losses, r_other_losses, r_other_ub_losses, nem_model
 
 
 def main():
@@ -254,11 +252,9 @@ def main():
 
 		# TODO: convert into a log dict
 		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
-		r_other_losses, r_other_ub_losses = nem_iterations(features_corrupted,
+		r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
 														   features,
 														   collisions=train_inputs.get('collisions', None))
-
-
 
 
 		# validation phase
@@ -267,21 +263,22 @@ def main():
 
 
 		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
-		r_other_losses, r_other_ub_losses = nem_iterations(features_corrupted_valid,
+		r_other_losses, r_other_ub_losses, valid_model = nem_iterations(features_corrupted_valid,
 														   features_valid,
 														   collisions=valid_inputs.get('collisions', None))
 
 		if loss < best_valid_loss:
 			best_valid_loss = loss
 			best_valid_epoch = epoch
-			print("    Best validation loss improved to %.03f" % best_valid_loss)
-			torch.save(nem_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'best.pth')))
+			print("Best validation loss improved to %.03f" % best_valid_loss)
+			print("Best valid epoch [{}/{}]".format(best_valid_epoch, args.max_epoch + 1))
+			torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'best.pth')))
 			print("    Saved to:", args.save_dir)
 
 		if epoch % args.log_per_iter == 0:
-			torch.save(nem_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'epoch_{}.pth'.format(epoch))))
+			torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'epoch_{}.pth'.format(epoch))))
 
-		if np.isnan(loss):
+		if np.isnan(loss.detach()):
 			print('Early Stopping because validation loss is nan')
 			break
 
