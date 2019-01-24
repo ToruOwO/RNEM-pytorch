@@ -119,14 +119,13 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	W, H, C = (x for x in input_shape[-3:])
 
 	# set up initial inner RNN and NEM model
-	nem_model = NEM(k=args.k, input_size=(W, H, C), hidden_size=args.inner_hidden_size)
+	nem_model = NEM(batch_size=input_shape[1], k=args.k, input_size=(W, H, C), hidden_size=args.inner_hidden_size)
 
 	# compute Bernoulli prior of pixels
 	prior = compute_bernoulli_prior()
 
 	# outputs
-	hidden_state = nem_model.init_state(input_shape[1], args.k)
-	nem_model.hidden_state = hidden_state
+	hidden_state = nem_model.hidden_state
 
 	# use Adam optimizer
 	optimizer = optim.Adam(nem_model.parameters(), lr=args.lr)
@@ -188,18 +187,13 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 
 		outputs.append(output)   # thetas, preds, gammas
 
+		if t % args.step_log_per_iter == 0:
+			print("Step [{}/{}], Loss: {:.4f}".format(t, args.nr_steps, total_loss))
+
 		# backward pass and optimize
 		optimizer.zero_grad()
 		total_loss.backward(retain_graph=True)
 		optimizer.step()
-
-		# # print log
-		# if (t+1) % 100 == 0:
-		# 	print('Epoch [{}/{}], Loss: {:.4f}'.format(epoch+1, num_epochs, total_loss.item()))
-
-	# losses /= len(input_data)
-	# print('%s [%d/%d] Loss: %.4f, Best valid: %.4f' %
-    #       (phase, epoch, args.n_epoch, losses, best_valid_loss))
 
 	# collect outputs
 	thetas, preds, gammas = zip(*outputs)
@@ -246,6 +240,8 @@ def main():
 	best_valid_epoch = 0
 
 	for epoch in range(1, args.max_epoch + 1):
+		print("Starting epoch {}...".format(epoch))
+
 		# training phase
 		features_corrupted = add_noise(train_inputs['features'], noise_type=args.noise_type)
 		features = train_inputs['features']
@@ -273,13 +269,14 @@ def main():
 			print("Best validation loss improved to %.03f" % best_valid_loss)
 			print("Best valid epoch [{}/{}]".format(best_valid_epoch, args.max_epoch + 1))
 			torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'best.pth')))
-			print("    Saved to:", args.save_dir)
+			print("===Saved to:", args.save_dir)
 
 		if epoch % args.log_per_iter == 0:
+			print("Epoch [{}/{}], Loss: {:.4f}".format(epoch+1, args.max_epoch + 1, loss))
 			torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'epoch_{}.pth'.format(epoch))))
 
 		if np.isnan(loss.detach()):
-			print('Early Stopping because validation loss is nan')
+			print("Early Stopping because validation loss is nan")
 			break
 
 
@@ -294,6 +291,7 @@ if __name__ == '__main__':
 	parser.add_argument('--max_epoch', type=int, default=500)
 	parser.add_argument('--noise_type', type=str, default='bitflip')
 	parser.add_argument('--log_per_iter', type=int, default=50)
+	parser.add_argument('--step_log_per_iter', type=int, default=10)
 	parser.add_argument('--k', type=int, default=5)
 	parser.add_argument('--data_batch_size', type=int, default=10)
 	parser.add_argument('--inner_hidden_size', type=int, default=250)

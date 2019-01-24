@@ -8,7 +8,7 @@ import torch.nn as nn
 from model import InnerRNN
 
 class NEM(nn.Module):
-	def __init__(self, k, input_size, hidden_size):
+	def __init__(self, batch_size, k, input_size, hidden_size):
 		super(NEM, self).__init__()
 		self.inner_rnn = InnerRNN(K=k)
 
@@ -18,10 +18,12 @@ class NEM(nn.Module):
 		self.input_size = input_size     # (W, H, C)
 		self.gamma_size = gamma_size     # (W, H, 1)
 
-		h, pred, gamma = self.init_state(10, 5)
+		h, pred, gamma = self.init_state(batch_size, k)
 		self.h = nn.Parameter(h)
 		self.pred = nn.Parameter(pred)
 		self.gamma = nn.Parameter(gamma)
+
+		self.hidden_state = (h, pred, gamma)
 
 	def init_state(self, batch_size, K, dtype=torch.float32):
 		"""
