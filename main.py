@@ -109,6 +109,50 @@ def compute_outer_ub_loss(pred, target, prior, collision):
 	return total_ub_loss, intra_ub_loss, inter_ub_loss, r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss
 
 
+def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old, collisions=None):
+	# get input dimensions
+	input_shape = input_data.size()
+
+	print("input data is of size", input_shape)
+
+	assert len(input_shape) == 5, "Requires 5D input (B, K, W, H, C)"
+	W, H, C = (x for x in input_shape[-3:])
+
+	# set up initial inner RNN and NEM model
+	nem_model = NEM(batch_size=input_shape[1], k=args.k, input_size=(W, H, C), hidden_size=args.inner_hidden_size)
+
+	# compute Bernoulli prior of pixels
+	prior = compute_bernoulli_prior()
+
+	# compute inputs for dynamic iterations
+	inputs = (input_data, target_data)
+	hidden_state = (h_old, preds_old, gamma_old)
+
+	# run hidden network
+	hidden_state, output = nem_model(inputs, hidden_state)
+	theta, pred, gamma = output
+
+	# set collision
+	collision = torch.zeros(1, 1, 1, 1, 1) if collisions is None else collisions[t]
+
+	# compute NEM losses
+	total_loss, intra_loss, inter_loss, r_total_loss, r_intra_loss, r_inter_loss \
+		= compute_outer_loss(pred, gamma, target_data[t + 1], prior, collision=collision)
+
+	# compute estimated loss upper bound (which doesn't use E-step)
+	total_ub_loss, intra_ub_loss, inter_ub_loss, r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss \
+		= compute_outer_ub_loss(pred, target_data[t + 1], prior, collision=collision)
+
+	other_losses = torch.stack((total_loss, intra_loss, inter_loss))
+	other_ub_losses = torch.stack((total_ub_loss, intra_ub_loss, inter_ub_loss))
+
+	r_other_losses = torch.stack((r_total_loss, r_intra_loss, r_inter_loss))
+	r_other_ub_losses = torch.stack((r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss))
+
+	return total_loss, total_ub_loss, r_total_loss, r_total_ub_loss, theta, pred, gamma, other_losses, \
+		   other_ub_losses, r_other_losses, r_other_ub_losses
+
+
 def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	# get input dimensions
 	input_shape = input_data.size()
@@ -217,6 +261,32 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 		   other_ub_losses, r_other_losses, r_other_ub_losses, nem_model
 
 
+def run_from_file():
+	# set up input data
+	attribute_list = ('features', 'groups')
+	nr_iters = args.nr_steps + 1
+
+	train_inputs = {attribute: Data(
+		args.data_name, 'training', sequence_length=nr_iters, attribute=attribute) for attribute in attribute_list}
+	valid_inputs = {attribute: Data(
+		args.data_name, 'validation', sequence_length=nr_iters, attribute=attribute) for attribute in attribute_list}
+
+	if args.saved_model is None:
+		saved_model_path = os.path.join(args.save_dir, 'best.pth')
+	else:
+		saved_model_path = os.path.join(args.save_dir, args.saved_model)
+
+	features = train_inputs["features"]
+	features_corrupted = add_noise(features)
+
+	# TODO: initialize gamma, theta and preds
+
+	loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas,
+		other_losses, other_ub_losses, r_other_losses, r_other_ub_losses =
+			dynamic_nem_iterations(input_data=features_corrupted, target_data=features,
+				gamma_old=gammas_old, h_old=thetas_old, preds_old=preds_old, collisions=collisions)
+
+
 def main():
 	log_dir = args.log_dir
 
@@ -297,6 +367,7 @@ if __name__ == '__main__':
 	parser.add_argument('--k', type=int, default=5)
 	parser.add_argument('--data_batch_size', type=int, default=10)
 	parser.add_argument('--inner_hidden_size', type=int, default=250)
+	parser.add_argument('--saved_model', type=str, default=None)
 
 	args = parser.parse_args()
 	print("=== Arguments ===")
