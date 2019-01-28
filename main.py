@@ -261,30 +261,33 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 		   other_ub_losses, r_other_losses, r_other_ub_losses, nem_model
 
 
-def run_from_file():
+def run_from_file(phase):
 	# set up input data
 	attribute_list = ('features', 'groups')
 	nr_iters = args.nr_steps + 1
 
-	train_inputs = {attribute: Data(
-		args.data_name, 'training', sequence_length=nr_iters, attribute=attribute) for attribute in attribute_list}
-	valid_inputs = {attribute: Data(
-		args.data_name, 'validation', sequence_length=nr_iters, attribute=attribute) for attribute in attribute_list}
+	input_data = {attribute: Data(
+		args.data_name, phase, sequence_length=nr_iters, attribute=attribute) for attribute in attribute_list}
 
 	if args.saved_model is None:
 		saved_model_path = os.path.join(args.save_dir, 'best.pth')
 	else:
 		saved_model_path = os.path.join(args.save_dir, args.saved_model)
 
-	features = train_inputs["features"]
-	features_corrupted = add_noise(features)
-
 	# TODO: initialize gamma, theta and preds
+	theta = torch.zeros(args.batch_size * args.k, 250)
+	pred = torch.ones(args.batch_size, args.k, 64, 64, 1)
+	gamma = np.abs(np.random.randn(args.batch_size, args.k, 64, 64, 1))
+	gamma /= np.sum(gamma, axis=1, keepdims=True)
+	gamma = torch.from_numpy(gamma)
 
-	loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas,
-		other_losses, other_ub_losses, r_other_losses, r_other_ub_losses =
-			dynamic_nem_iterations(input_data=features_corrupted, target_data=features,
-				gamma_old=gammas_old, h_old=thetas_old, preds_old=preds_old, collisions=collisions)
+	corrupted, scores, gammas, thetas, preds = [], [], [gamma], [theta], [pred]
+
+	for t in range(args.nr_steps):
+		collisions = input_data['collisions'][t]
+
+	loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, r_other_losses, r_other_ub_losses =
+			dynamic_nem_iterations(input_data=input_data['features'][t], target_data=input_data['features'][t+1], gamma_old=gamma, h_old=theta, preds_old=pred, collisions=collisions)
 
 
 def main():
