@@ -118,8 +118,16 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	assert len(input_shape) == 5, "Requires 5D input (B, K, W, H, C)"
 	W, H, C = (x for x in input_shape[-3:])
 
-	# set up initial inner RNN and NEM model
+	# set up NEM model
 	nem_model = NEM(batch_size=input_shape[1], k=args.k, input_size=(W, H, C), hidden_size=args.inner_hidden_size)
+
+	if args.saved_model is None:
+		saved_model_path = os.path.join(args.save_dir, 'best.pth')
+	else:
+		saved_model_path = os.path.join(args.save_dir, args.saved_model)
+
+	nem_model.load_state_dict(torch.load(saved_model_path))
+	nem_model.eval()
 
 	# compute Bernoulli prior of pixels
 	prior = compute_bernoulli_prior()
@@ -264,30 +272,57 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 def run_from_file():
 	# set up input data
 	attribute_list = ('features', 'groups')
-	nr_iters = args.nr_steps + 1
+	nr_iters = args.nr_steps + args.rollout_steps + 1
 
 	input_data = {attribute: Data(
 		args.data_name, 'test', sequence_length=nr_iters, attribute=attribute) for attribute in attribute_list}
 
-	if args.saved_model is None:
-		saved_model_path = os.path.join(args.save_dir, 'best.pth')
-	else:
-		saved_model_path = os.path.join(args.save_dir, args.saved_model)
-
-	# TODO: initialize gamma, theta and preds
+	# initialize RNN hidden state, prediction and gamma
 	theta = torch.zeros(args.batch_size * args.k, 250)
-	pred = torch.ones(args.batch_size, args.k, 64, 64, 1)
-	gamma = np.abs(np.random.randn(args.batch_size, args.k, 64, 64, 1))
+	pred = torch.ones(args.batch_size, args.k, 64, 64, 1)                  # (B, K, W, H, C)
+	gamma = np.abs(np.random.randn(args.batch_size, args.k, 64, 64, 1))    # (B, K, W, H, 1)
 	gamma /= np.sum(gamma, axis=1, keepdims=True)
 	gamma = torch.from_numpy(gamma)
 
 	corrupted, scores, gammas, thetas, preds = [], [], [gamma], [theta], [pred]
-
-	for t in range(args.nr_steps+args.rollout_steps):
+	
+	# run rollout steps
+	for t in range(nr_iters - 1):
 		collisions = input_data['collisions'][t]
 
-	loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, r_other_losses, r_other_ub_losses =
-			dynamic_nem_iterations(input_data=input_data['features'][t], target_data=input_data['features'][t+1], gamma_old=gamma, h_old=theta, preds_old=pred, collisions=collisions)
+		corr = add_noise(input_data['features'][t])
+
+		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, r_other_losses, r_other_ub_losses = \
+				dynamic_nem_iterations(input_data=corr,
+									   target_data=input_data['features'][t+1],
+									   gamma_old=gamma,
+									   h_old=theta,
+									   preds_old=pred,
+									   collisions=collisions)
+
+		# re-compute gamma if rollout
+		if t >= args.nr_steps:
+			truth = torch.max(preds, dim=1, keepdims=True)
+
+			# avoid vanishing by scaling or sampling
+			truth[truth > 0.1] = 1.0
+			truth[truth <= 0.1] = 0.0
+
+			# compute probs
+			probs = truth * pred + (1 - truth) * (1 - pred)
+
+			# add epsilon to probs in order to prevent 0 gamma
+			probs += 1e-6
+
+			# compute the new gamma (E-step) or set to one for k=1
+			gamma = probs / torch.sum(probs, 1, keepdims=True) if args.k > 1 else torch.ones_like(gamma)
+
+		corrupted.append(corr)
+		gammas.append(gamma)
+		thetas.append(theta)
+		preds.append(pred)
+
+	# TODO: record data using dictionary and print
 
 
 def run():

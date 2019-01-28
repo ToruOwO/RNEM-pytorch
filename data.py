@@ -88,6 +88,10 @@ class Data(Dataset):
 	def __len__(self):
 		return self.data_shape[0]
 
+	@staticmethod
+	def get_num_batches(self):
+		return self.data_shape[0] // batch_size
+
 
 # train_data = Data('balls3curtain64', 'training')
 # print("Number of sequences in training data:", len(train_data))
