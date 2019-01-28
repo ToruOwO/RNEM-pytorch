@@ -180,7 +180,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	hidden_state = nem_model.hidden_state
 
 	# use Adam optimizer
-	optimizer = optim.Adam(nem_model.parameters(), lr=args.lr)
+	optimizer = optim.Adam(list(nem_model.parameters()) + list(nem_model.inner_rnn.parameters()), lr=args.lr)
 
 	# record losses
 	total_losses = []
