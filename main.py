@@ -261,13 +261,13 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 		   other_ub_losses, r_other_losses, r_other_ub_losses, nem_model
 
 
-def run_from_file(phase):
+def run_from_file():
 	# set up input data
 	attribute_list = ('features', 'groups')
 	nr_iters = args.nr_steps + 1
 
 	input_data = {attribute: Data(
-		args.data_name, phase, sequence_length=nr_iters, attribute=attribute) for attribute in attribute_list}
+		args.data_name, 'test', sequence_length=nr_iters, attribute=attribute) for attribute in attribute_list}
 
 	if args.saved_model is None:
 		saved_model_path = os.path.join(args.save_dir, 'best.pth')
@@ -283,14 +283,14 @@ def run_from_file(phase):
 
 	corrupted, scores, gammas, thetas, preds = [], [], [gamma], [theta], [pred]
 
-	for t in range(args.nr_steps):
+	for t in range(args.nr_steps+args.rollout_steps):
 		collisions = input_data['collisions'][t]
 
 	loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, r_other_losses, r_other_ub_losses =
 			dynamic_nem_iterations(input_data=input_data['features'][t], target_data=input_data['features'][t+1], gamma_old=gamma, h_old=theta, preds_old=pred, collisions=collisions)
 
 
-def main():
+def run():
 	log_dir = args.log_dir
 
 	utils.create_directory(log_dir)
@@ -371,10 +371,14 @@ if __name__ == '__main__':
 	parser.add_argument('--data_batch_size', type=int, default=10)
 	parser.add_argument('--inner_hidden_size', type=int, default=250)
 	parser.add_argument('--saved_model', type=str, default=None)
+	parser.add_argument('--rollout_steps', type=int, default=10)
 
 	args = parser.parse_args()
 	print("=== Arguments ===")
 	print(args)
 	print()
 
-	main()
+	if args.saved_model is None:
+		run()
+	else:
+		run_from_file()
