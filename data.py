@@ -10,7 +10,7 @@ data_path = "./data"
 train_size = None
 valid_size = None
 test_size = None
-batch_size = 10
+batch_size = 64
 
 class Data(Dataset):
 	"""
@@ -25,7 +25,7 @@ class Data(Dataset):
 		sequence_length(int): number of frames to use
 		attribute(str): attribute used
 	"""
-	def __init__(self, data_name, phase, sequence_length=51, attribute='features'):
+	def __init__(self, data_name, phase, batch_id, sequence_length=51, attribute='features'):
 		if data_name not in data_names:
 			print("Dataset does not exist")
 
@@ -34,10 +34,10 @@ class Data(Dataset):
 		self.sequence_length = sequence_length
 		self.attribute = attribute
 		self.data_shape = None
-		
-		self.data = self._load_dataset()
 
-	def _load_dataset(self):
+		self.data = self._load_dataset(batch_id)
+
+	def _load_dataset(self, batch_id):
 		"""
 		Return a dictionary of HDF5 Datasets
 
@@ -63,10 +63,12 @@ class Data(Dataset):
 		data_shape = (self.sequence_length, batch_size, 1) + f[self.phase][self.attribute].shape[2:]
 		self.data_shape = data_shape
 
+		start_idx, end_idx = batch_id * batch_size, (batch_id+1) * batch_size
+		data = f[self.phase][self.attribute][:self.sequence_length, start_idx:end_idx, :, :, :]
+
 		# reshape data accordingly
-		data = f[self.phase][self.attribute][:self.sequence_length, :batch_size, :, :, :]
 		data = np.reshape(data, data_shape)
-		
+
 		print("Shape of loaded data:", self.data_shape)
 		print()
 
@@ -89,8 +91,8 @@ class Data(Dataset):
 		return self.data_shape[0]
 
 	@staticmethod
-	def get_num_batches(self):
-		return self.data_shape[0] // batch_size
+	def get_num_batches():
+		return 50000 // batch_size
 
 
 # train_data = Data('balls3curtain64', 'training')
