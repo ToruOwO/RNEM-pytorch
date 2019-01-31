@@ -119,7 +119,7 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	W, H, C = (x for x in input_shape[-3:])
 
 	# set up NEM model
-	nem_model = NEM(batch_size=input_shape[1], k=args.k, input_size=(W, H, C), hidden_size=args.inner_hidden_size)
+	nem_model = NEM(batch_size=input_shape[1], k=args.k, input_size=(W, H, C), hidden_size=args.inner_hidden_size).to(device)
 
 	saved_model_path = os.path.join(args.save_dir, args.saved_model)
 
@@ -168,7 +168,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	W, H, C = (x for x in input_shape[-3:])
 
 	# set up initial inner RNN and NEM model
-	nem_model = NEM(batch_size=input_shape[1], k=args.k, input_size=(W, H, C), hidden_size=args.inner_hidden_size)
+	nem_model = NEM(batch_size=input_shape[1], k=args.k, input_size=(W, H, C), hidden_size=args.inner_hidden_size).to(device)
 
 	# compute Bernoulli prior of pixels
 	prior = compute_bernoulli_prior()

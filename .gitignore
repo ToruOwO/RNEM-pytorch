@@ -1,5 +1,6 @@
 __pycache__
 data/*
-debug/
+debug/*
 trained_model/*
 *.h5
+.idea/*
