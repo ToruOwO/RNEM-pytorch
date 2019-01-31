@@ -121,10 +121,7 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	# set up NEM model
 	nem_model = NEM(batch_size=input_shape[1], k=args.k, input_size=(W, H, C), hidden_size=args.inner_hidden_size)
 
-	if args.saved_model is None:
-		saved_model_path = os.path.join(args.save_dir, 'best.pth')
-	else:
-		saved_model_path = os.path.join(args.save_dir, args.saved_model)
+	saved_model_path = os.path.join(args.save_dir, args.saved_model)
 
 	nem_model.load_state_dict(torch.load(saved_model_path))
 	nem_model.eval()
@@ -266,16 +263,21 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	r_total_ub_loss = torch.sum(torch.stack(r_total_ub_losses)) / np.sum(loss_step_weights)
 
 	return total_loss, total_ub_loss, r_total_loss, r_total_ub_loss, thetas, preds, gammas, other_losses, \
-		   other_ub_losses, r_other_losses, r_other_ub_losses, nem_model
+		other_ub_losses, r_other_losses, r_other_ub_losses, nem_model
 
 
-def run_from_file():
+def rollout_from_file():
 	# set up input data
 	attribute_list = ('features', 'groups')
 	nr_iters = args.nr_steps + args.rollout_steps + 1
 
-	input_data = {attribute: Data(
-		args.data_name, 'test', sequence_length=nr_iters, attribute=attribute) for attribute in attribute_list}
+	input_data = {
+		attribute: Data(args.data_name,
+						'test',
+						batch_id=0,
+						sequence_length=nr_iters,
+						attribute=attribute) for attribute in attribute_list
+	}
 
 	# initialize RNN hidden state, prediction and gamma
 	theta = torch.zeros(args.batch_size * args.k, 250)
@@ -288,17 +290,20 @@ def run_from_file():
 	
 	# run rollout steps
 	for t in range(nr_iters - 1):
-		collisions = input_data['collisions'][t]
+		if 'collisions' in input_data:
+			collisions = input_data['collisions'][t]
+		else:
+			collisions = None
 
 		corr = add_noise(input_data['features'][t])
 
-		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, r_other_losses, r_other_ub_losses = \
-				dynamic_nem_iterations(input_data=corr,
-									   target_data=input_data['features'][t+1],
-									   gamma_old=gamma,
-									   h_old=theta,
-									   preds_old=pred,
-									   collisions=collisions)
+		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
+		r_other_losses, r_other_ub_losses = dynamic_nem_iterations(input_data=corr,
+																	target_data=input_data['features'][t+1],
+																	gamma_old=gamma,
+																	h_old=theta,
+																	preds_old=pred,
+																	collisions=collisions)
 
 		# re-compute gamma if rollout
 		if t >= args.nr_steps:
@@ -322,7 +327,63 @@ def run_from_file():
 		thetas.append(theta)
 		preds.append(pred)
 
-	# TODO: record data using dictionary and print
+
+def print_log_dict(usage, loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, \
+					r_other_ub_losses, loss_step_weights):
+	dt = args.dt
+	s_loss_weights = np.sum(loss_step_weights)
+	dt_s_loss_weights = np.sum(loss_step_weights[-dt:])
+
+	print("%s Loss: %.3f (UB: %.3f), Relational Loss: %.3f (UB: %.3f)" % (usage, loss, ub_loss, r_loss, r_ub_loss))
+
+	print("    other losses: {}".format(", ".join(["%.2f (UB: %.2f)" % 
+																(other_losses[:, i].sum(0) / s_loss_weights,
+																other_ub_losses[:, i].sum(0) / s_loss_weights)
+																for i in range(len(other_losses[0]))])))
+
+	print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
+																(other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
+																other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
+																for i in range(len(other_losses[0]))])))
+
+	print("    other relational losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
+																(r_other_losses[:, i].sum(0) / s_loss_weights,
+																	r_other_ub_losses[:, i].sum(0) / s_loss_weights)
+																for i in range(len(r_other_losses[0]))])))
+
+	print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
+																(r_other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
+																r_other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
+																for i in range(len(r_other_losses[0]))])))
+
+
+def run_from_file():
+	attribute_list = ('features', 'groups')
+	nr_iters = args.nr_steps + 1
+	loss_step_weights = [1.0] * args.nr_steps
+
+	# TODO: record data using dictionary
+	for epoch in range(1, args.max_epoch + 1):
+		print("Starting epoch {}...".format(epoch))
+
+		for b in range(Data.get_num_batches()):
+			inputs = {
+				attribute: Data(args.data_name, 'test', b, sequence_length=nr_iters, attribute=attribute)
+				for attribute in attribute_list
+			}
+
+			# training phase
+			features_corrupted = add_noise(inputs['features'], noise_type=args.noise_type)
+			features = inputs['features']
+
+			# TODO: convert into a log dict
+			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
+			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
+															   features,
+															   collisions=inputs.get('collisions', None))
+
+			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, \
+				r_other_ub_losses, loss_step_weights)
 
 
 def run():
@@ -394,26 +455,28 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--data_name', type=str, default='balls3curtain64')
 	parser.add_argument('--log_dir', type=str, default='./debug')
-	parser.add_argument('--save_dir', type=str, default='./model')
+	parser.add_argument('--save_dir', type=str, default='./trained_model')
 	parser.add_argument('--nr_steps', type=int, default=30)
 	parser.add_argument('--batch_size', type=int, default=64)
 	parser.add_argument('--lr', type=float, default=0.001)
 	parser.add_argument('--max_epoch', type=int, default=500)
+	parser.add_argument('--dt', type=int, default=10)
 	parser.add_argument('--noise_type', type=str, default='bitflip')
 	parser.add_argument('--log_per_iter', type=int, default=50)
 	parser.add_argument('--step_log_per_iter', type=int, default=10)
 	parser.add_argument('--k', type=int, default=5)
 	parser.add_argument('--data_batch_size', type=int, default=10)
 	parser.add_argument('--inner_hidden_size', type=int, default=250)
-	parser.add_argument('--saved_model', type=str, default=None)
+	parser.add_argument('--saved_model', type=str, default='best.pth')
 	parser.add_argument('--rollout_steps', type=int, default=10)
+	parser.add_argument('--eval', type=bool, default=False)
 
 	args = parser.parse_args()
 	print("=== Arguments ===")
 	print(args)
 	print()
 
-	if args.saved_model is None:
-		run()
-	else:
+	if args.eval:
 		run_from_file()
+	else:
+		run()
