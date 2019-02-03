@@ -170,6 +170,11 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	# set up initial inner RNN and NEM model
 	nem_model = NEM(batch_size=input_shape[1], k=args.k, input_size=(W, H, C), hidden_size=args.inner_hidden_size).to(device)
 
+	if args.saved_model != None or args.saved_model != "":
+		# set up trained NEM model
+		saved_model_path = os.path.join(args.save_dir, args.saved_model)
+		nem_model.load_state_dict(torch.load(saved_model_path))
+
 	# compute Bernoulli prior of pixels
 	prior = compute_bernoulli_prior()
 
