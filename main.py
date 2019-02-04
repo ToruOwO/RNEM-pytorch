@@ -467,7 +467,7 @@ if __name__ == '__main__':
 	parser.add_argument('--max_epoch', type=int, default=500)
 	parser.add_argument('--dt', type=int, default=10)
 	parser.add_argument('--noise_type', type=str, default='bitflip')
-	parser.add_argument('--log_per_iter', type=int, default=50)
+	parser.add_argument('--log_per_iter', type=int, default=10)
 	parser.add_argument('--step_log_per_iter', type=int, default=10)
 	parser.add_argument('--k', type=int, default=5)
 	parser.add_argument('--data_batch_size', type=int, default=10)

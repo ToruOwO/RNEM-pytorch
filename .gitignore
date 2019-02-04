@@ -3,4 +3,4 @@ data/*
 debug/*
 trained_model/*
 *.h5
-.idea/*
+.idea

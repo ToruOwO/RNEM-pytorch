@@ -5,6 +5,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from model import InnerRNN
+
 class NEM(nn.Module):
 	def __init__(self, batch_size, k, input_size, hidden_size):
 		super(NEM, self).__init__()
