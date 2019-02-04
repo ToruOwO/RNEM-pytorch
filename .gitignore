@@ -1,6 +1,7 @@
 __pycache__
+.DS_Store
 data/*
 debug/*
 trained_model/*
 *.h5
-.idea
+.idea/
