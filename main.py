@@ -218,6 +218,10 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	losses = 0.0
 
 	for t, loss_weight in enumerate(loss_step_weights):
+		# make sure the input tensors are on GPU/CPU
+		input_data[t] = input_data[t].to(device)
+		target_data[t+1] = target_data[t+1].to(device)
+
 		# model should predict the next frame
 		inputs = (input_data[t], target_data[t+1])
 
@@ -393,10 +397,6 @@ def run_from_file():
 			features_corrupted = add_noise(inputs['features'], noise_type=args.noise_type)
 			features = inputs['features']
 
-			# make sure the input tensors are on GPU/CPU
-			features_corrupted = features_corrupted.to(device)
-			features = features.to(device)
-
 			# TODO: convert into a log dict
 			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
 			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
@@ -437,10 +437,6 @@ def run():
 			# training phase
 			features_corrupted = add_noise(train_inputs['features'], noise_type=args.noise_type)
 			features = train_inputs['features']
-
-			# make sure the input tensors are on GPU/CPU
-			features_corrupted = features_corrupted.to(device)
-			features = features.to(device)
 
 			# TODO: convert into a log dict
 			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\

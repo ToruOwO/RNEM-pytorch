@@ -7,6 +7,10 @@ import torch.nn as nn
 
 from model import InnerRNN
 
+# Device configuration
+use_gpu = torch.cuda.is_available()
+device = torch.device('cuda' if use_gpu else 'cpu')
+
 class NEM(nn.Module):
 	def __init__(self, batch_size, k, input_size, hidden_size):
 		super(NEM, self).__init__()
@@ -55,6 +59,7 @@ class NEM(nn.Module):
 
 		# print("h, pred, gamma", h.size(), pred.size(), gamma.size())
 
+		h, pred, gamma = h.to(device), pred.to(device), gamma.to(device)
 		return h, pred, gamma
 
 	@staticmethod
