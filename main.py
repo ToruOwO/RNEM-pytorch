@@ -119,11 +119,17 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	W, H, C = (x for x in input_shape[-3:])
 
 	# set up NEM model
-	nem_model = NEM(batch_size=input_shape[1], k=args.k, input_size=(W, H, C), hidden_size=args.inner_hidden_size).to(device)
+	nem_model = NEM(batch_size=input_shape[1],
+	                k=args.k,
+	                input_size=(W, H, C),
+	                hidden_size=args.inner_hidden_size).to(device)
 
-	saved_model_path = os.path.join(args.save_dir, args.saved_model)
+	if args.saved_model != None and args.saved_model != "":
+		# load trained NEM model if exists
+		saved_model_path = os.path.join(args.save_dir, args.saved_model)
+		assert os.path.isfile(saved_model_path), "Path to model does not exist"
+		nem_model.load_state_dict(torch.load(saved_model_path))
 
-	nem_model.load_state_dict(torch.load(saved_model_path))
 	nem_model.eval()
 
 	# compute Bernoulli prior of pixels
@@ -168,20 +174,25 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	W, H, C = (x for x in input_shape[-3:])
 
 	# set up initial inner RNN and NEM model
-	nem_model = NEM(batch_size=input_shape[1], k=args.k, input_size=(W, H, C), hidden_size=args.inner_hidden_size).to(device)
+	nem_model = NEM(batch_size=input_shape[1],
+	                k=args.k,
+	                input_size=(W, H, C),
+	                hidden_size=args.inner_hidden_size).to(device)
 
-	if args.saved_model != None or args.saved_model != "":
-		# set up trained NEM model
+	if args.saved_model != None and args.saved_model != "":
+		# load trained NEM model if exists
 		saved_model_path = os.path.join(args.save_dir, args.saved_model)
+		assert os.path.isfile(saved_model_path), "Path to model does not exist"
 		nem_model.load_state_dict(torch.load(saved_model_path))
 
 	# compute Bernoulli prior of pixels
 	prior = compute_bernoulli_prior()
 
-	# outputs
-	hidden_state = nem_model.hidden_state
+	# output
+	hidden_state = (nem_model.h, nem_model.pred, nem_model.gamma)
 
 	# use Adam optimizer
+	print("paramaeters", list(nem_model.parameters()) + list(nem_model.inner_rnn.parameters()))
 	optimizer = optim.Adam(list(nem_model.parameters()) + list(nem_model.inner_rnn.parameters()), lr=args.lr)
 
 	# record losses
@@ -472,7 +483,7 @@ if __name__ == '__main__':
 	parser.add_argument('--k', type=int, default=5)
 	parser.add_argument('--data_batch_size', type=int, default=10)
 	parser.add_argument('--inner_hidden_size', type=int, default=250)
-	parser.add_argument('--saved_model', type=str, default='best.pth')
+	parser.add_argument('--saved_model', type=str, default='')
 	parser.add_argument('--rollout_steps', type=int, default=10)
 	parser.add_argument('--eval', type=bool, default=False)
 
