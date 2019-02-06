@@ -36,7 +36,7 @@ def add_noise(data, noise_type=None, noise_prob=0.2):
 
 			if noise_type == 'bitflip':
 				noise_dist = dist.Bernoulli(probs=noise_prob)
-				n = noise_dist.sample(shape)
+				n = noise_dist.sample(shape).to(device)
 				corrupted = data[i] + n - 2 * data[i] * n  # hacky way of implementing (data XOR n)
 			else:
 				raise KeyError('Unknown noise_type "{}"'.format(noise_type))
