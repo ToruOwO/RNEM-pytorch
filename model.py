@@ -226,7 +226,7 @@ class R_NEM(nn.Module):
 			nn.Linear(state.size()[-1], self.fc_size),
 			nn.LayerNorm(self.fc_size),
 			nn.ReLU()
-		)
+		).to(device)
 
 		# encode theta
 		state1 = self.encoder(state)   # (b*k, h1)
@@ -267,7 +267,7 @@ class R_NEM(nn.Module):
 			nn.Linear(concat.size()[-1], self.fc_size),
 			nn.LayerNorm(self.fc_size),
 			nn.ReLU()
-		)
+		).to(device)
 
 		core_out = self.core(concat)   # (b*k*(k-1), h1)
 
@@ -276,7 +276,7 @@ class R_NEM(nn.Module):
 			nn.Linear(core_out.size()[-1], self.fc_size),
 			nn.LayerNorm(self.fc_size),
 			nn.ReLU()
-		)
+		).to(device)
 
 		context_out = self.context(core_out)   # (b*k*(k-1), h2)
 
@@ -291,7 +291,7 @@ class R_NEM(nn.Module):
 			nn.Tanh(),
 			nn.Linear(self.last_fc_size, 1),
 			nn.Sigmoid()
-		)
+		).to(device)
 
 		attention_out = self.attention(core_out)   # (b*k*(k-1), 1)
 
