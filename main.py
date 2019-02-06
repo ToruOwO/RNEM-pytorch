@@ -193,7 +193,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	hidden_state = (nem_model.h, nem_model.pred, nem_model.gamma)
 
 	# use Adam optimizer
-	print("paramaeters", list(nem_model.parameters()) + list(nem_model.inner_rnn.parameters()))
+	# print("paramaeters", list(nem_model.parameters()) + list(nem_model.inner_rnn.parameters()))
 	optimizer = optim.Adam(list(nem_model.parameters()) + list(nem_model.inner_rnn.parameters()), lr=args.lr)
 
 	# record losses
@@ -389,6 +389,10 @@ def run_from_file():
 				for attribute in attribute_list
 			}
 
+			# convert numpy bool array to tensor on GPU
+			for k, v in inputs.items():
+				inputs[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
+
 			# training phase
 			features_corrupted = add_noise(inputs['features'], noise_type=args.noise_type)
 			features = inputs['features']
@@ -430,11 +434,11 @@ def run():
 				for attribute in attribute_list
 			}
 
-			if use_gpu:
-				for k, v in train_inputs.items():
-					train_inputs[k] = v.to(device)
-				for k, v in valid_inputs.items():
-					valid_inputs[k] = v.to(device)
+			# convert numpy bool array to tensor on GPU
+			for k, v in train_inputs.items():
+				train_inputs[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
+			for k, v in valid_inputs.items():
+				valid_inputs[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
 
 			# training phase
 			features_corrupted = add_noise(train_inputs['features'], noise_type=args.noise_type)
