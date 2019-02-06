@@ -218,10 +218,6 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	losses = 0.0
 
 	for t, loss_weight in enumerate(loss_step_weights):
-		# make sure the input tensors are on GPU/CPU
-		input_data[t] = input_data[t].to(device)
-		target_data[t+1] = target_data[t+1].to(device)
-
 		# model should predict the next frame
 		inputs = (input_data[t], target_data[t+1])
 

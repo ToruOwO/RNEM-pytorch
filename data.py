@@ -5,6 +5,10 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 
+# Device configuration
+use_gpu = torch.cuda.is_available()
+device = torch.device('cuda' if use_gpu else 'cpu')
+
 data_names = {'balls4mass64', 'balls678mass64', 'balls3curtain64', 'atari'}
 data_path = "./data"
 train_size = None
@@ -83,7 +87,7 @@ class Data(Dataset):
 		d = self.data[idx, :, :, :, :, :]
 
 		# convert data to PyTorch tensor
-		t = torch.tensor(d.astype(np.float32))
+		t = torch.tensor(d.astype(np.float32)).to(device)
 
 		return t
 
