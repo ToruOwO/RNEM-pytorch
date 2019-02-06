@@ -64,6 +64,9 @@ def compute_outer_loss(mu, gamma, target, prior, collision):
 	# use KL divergence as inter loss
 	inter_criterion = KLDivLoss().to(device)
 
+	# convert to cuda tensor on GPU
+	prior = prior.to(device)
+
 	intra_loss = intra_criterion(mu, target)
 	inter_loss = inter_criterion(prior, mu)
 
