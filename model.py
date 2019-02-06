@@ -304,7 +304,7 @@ class R_NEM(nn.Module):
 		total = torch.cat([state1, effect_sum, x], dim=1)   # (b*k, h1+h2+m)
 
 		# produce recurrent update
-		out_fc = nn.Linear(h1+h2+m, self.fc_size)
+		out_fc = nn.Linear(h1+h2+m, self.fc_size).to(device)
 		new_state = out_fc(total)   # (b*k, h)
 
 		return new_state, new_state
