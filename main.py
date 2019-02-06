@@ -13,7 +13,8 @@ from nem import NEM
 from utils import BCELoss, KLDivLoss
 
 # Device configuration
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+use_gpu = torch.cuda.is_available()
+device = torch.device('cuda' if use_gpu else 'cpu')
 
 args = None
 
@@ -392,11 +393,15 @@ def run_from_file():
 			features_corrupted = add_noise(inputs['features'], noise_type=args.noise_type)
 			features = inputs['features']
 
+			# make sure the input tensors are on GPU/CPU
+			features_corrupted = features_corrupted.to(device)
+			features = features.to(device)
+
 			# TODO: convert into a log dict
 			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
 			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
-															   features,
-															   collisions=inputs.get('collisions', None))
+			                                                                features,
+			                                                                collisions=inputs.get('collisions', None))
 
 			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, \
 				r_other_ub_losses, loss_step_weights)
@@ -433,11 +438,15 @@ def run():
 			features_corrupted = add_noise(train_inputs['features'], noise_type=args.noise_type)
 			features = train_inputs['features']
 
+			# make sure the input tensors are on GPU/CPU
+			features_corrupted = features_corrupted.to(device)
+			features = features.to(device)
+
 			# TODO: convert into a log dict
 			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
 			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
-															   features,
-															   collisions=train_inputs.get('collisions', None))
+			                                                                features,
+			                                                                collisions=train_inputs.get('collisions', None))
 
 
 			# validation phase
@@ -447,8 +456,8 @@ def run():
 
 			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
 			r_other_losses, r_other_ub_losses, valid_model = nem_iterations(features_corrupted_valid,
-															   features_valid,
-															   collisions=valid_inputs.get('collisions', None))
+			                                                                features_valid,
+			                                                                collisions=valid_inputs.get('collisions', None))
 
 			if loss < best_valid_loss:
 				best_valid_loss = loss
