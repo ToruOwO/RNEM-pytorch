@@ -35,7 +35,6 @@ class BCELoss(nn.Module):
 		else:
 			return res
 
-
 # compute KL(p1, p2)
 class KLDivLoss(nn.Module):
 	def __init__(self):
@@ -44,5 +43,7 @@ class KLDivLoss(nn.Module):
 	def forward(self, p1, p2):
 		res = p1 * torch.log(torch.clamp(p1 /torch.clamp(p2, 1e-6, 1e6), 1e-6, 1e6)) + (1 - p1) * torch.log(
 			torch.clamp((1-p1)/torch.clamp(1-p2, 1e-6, 1e6), 1e-6, 1e6))
-		res.to(device)
-		return res
+		if use_gpu:
+			return res.cuda()
+		else:
+			return res
