@@ -59,10 +59,10 @@ def compute_bernoulli_prior():
 
 def compute_outer_loss(mu, gamma, target, prior, collision):
 	# use binomial cross entropy as intra loss
-	intra_criterion = BCELoss()
+	intra_criterion = BCELoss().to(device)
 
 	# use KL divergence as inter loss
-	inter_criterion = KLDivLoss()
+	inter_criterion = KLDivLoss().to(device)
 
 	intra_loss = intra_criterion(mu, target)
 	inter_loss = inter_criterion(prior, mu)
@@ -88,10 +88,10 @@ def compute_outer_ub_loss(pred, target, prior, collision):
 	max_pred = torch.unsqueeze(max_pred, 1)
 
 	# use binomial cross entropy as intra loss
-	intra_criterion = nn.BCELoss()
+	intra_criterion = nn.BCELoss().to(device)
 
 	# use KL divergence as inter loss
-	inter_criterion = KLDivLoss()
+	inter_criterion = KLDivLoss().to(device)
 
 	intra_ub_loss = intra_criterion(max_pred, target)
 	inter_ub_loss = inter_criterion(prior, max_pred)
