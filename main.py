@@ -147,7 +147,7 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	theta, pred, gamma = output
 
 	# set collision
-	collision = torch.zeros(1, 1, 1, 1, 1) if collisions is None else collisions[t]
+	collision = torch.zeros(1, 1, 1, 1, 1).to(device) if collisions is None else collisions[t]
 
 	# compute NEM losses
 	total_loss, intra_loss, inter_loss, r_total_loss, r_intra_loss, r_inter_loss \
