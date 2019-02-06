@@ -147,7 +147,7 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	theta, pred, gamma = output
 
 	# set collision
-	collision = torch.zeros(1, 1, 1, 1, 1).to(device) if collisions is None else collisions[t]
+	collision = torch.zeros(1, 1, 1, 1, 1).to(device) if collisions is None else collisions
 
 	# compute NEM losses
 	total_loss, intra_loss, inter_loss, r_total_loss, r_intra_loss, r_inter_loss \
@@ -195,7 +195,6 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	hidden_state = (nem_model.h, nem_model.pred, nem_model.gamma)
 
 	# use Adam optimizer
-	# print("paramaeters", list(nem_model.parameters()) + list(nem_model.inner_rnn.parameters()))
 	optimizer = optim.Adam(list(nem_model.parameters()) + list(nem_model.inner_rnn.parameters()), lr=args.lr)
 
 	# record losses
@@ -233,7 +232,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 		theta, pred, gamma = output
 
 		# use collision data
-		collision = torch.zeros(1, 1, 1, 1, 1) if collisions is None else collisions[t]
+		collision = torch.zeros(1, 1, 1, 1, 1).to(device) if collisions is None else collisions[t]
 
 		# compute NEM losses
 		total_loss, intra_loss, inter_loss, r_total_loss, r_intra_loss, r_inter_loss \
