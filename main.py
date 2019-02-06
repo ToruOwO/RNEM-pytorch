@@ -54,7 +54,8 @@ def compute_bernoulli_prior():
 	"""
 	Compute Bernoulli prior over the input data with p = 0.0
 	"""
-	return torch.zeros(1, 1, 1, 1, 1)
+	# convert to cuda tensor on GPU
+	return torch.zeros(1, 1, 1, 1, 1).to(device)
 
 
 def compute_outer_loss(mu, gamma, target, prior, collision):
@@ -63,9 +64,6 @@ def compute_outer_loss(mu, gamma, target, prior, collision):
 
 	# use KL divergence as inter loss
 	inter_criterion = KLDivLoss().to(device)
-
-	# convert to cuda tensor on GPU
-	prior = prior.to(device)
 
 	intra_loss = intra_criterion(mu, target)
 	inter_loss = inter_criterion(prior, mu)
@@ -137,6 +135,7 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	nem_model.eval()
 
 	# compute Bernoulli prior of pixels
+	# convert to cuda tensor on GPU
 	prior = compute_bernoulli_prior()
 
 	# compute inputs for dynamic iterations
