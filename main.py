@@ -430,6 +430,12 @@ def run():
 				for attribute in attribute_list
 			}
 
+			if use_gpu:
+				for k, v in train_inputs.items():
+					train_inputs[k] = v.to(device)
+				for k, v in valid_inputs.items():
+					valid_inputs[k] = v.to(device)
+
 			# training phase
 			features_corrupted = add_noise(train_inputs['features'], noise_type=args.noise_type)
 			features = train_inputs['features']
