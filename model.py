@@ -3,6 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# Device configuration
+use_gpu = torch.cuda.is_available()
+device = torch.device('cuda' if use_gpu else 'cpu')
+
 # dict of activation functions
 ACTIVATION_FUNCTIONS = {
     'sigmoid': F.sigmoid,
@@ -398,9 +402,9 @@ class InnerRNN(nn.Module):
 	def __init__(self, K):
 		super(InnerRNN, self).__init__()
 
-		self.encoder = EncoderLayer()
-		self.recurrent = RecurrentLayer(K)
-		self.decoder = DecoderLayer()
+		self.encoder = EncoderLayer().to(device)
+		self.recurrent = RecurrentLayer(K).to(device)
+		self.decoder = DecoderLayer().to(device)
 
 	def forward(self, x, state):
 		x, state = self.encoder(x, state)
