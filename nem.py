@@ -14,7 +14,7 @@ device = torch.device('cuda' if use_gpu else 'cpu')
 class NEM(nn.Module):
 	def __init__(self, batch_size, k, input_size, hidden_size):
 		super(NEM, self).__init__()
-		self.inner_rnn = InnerRNN(K=k)
+		self.inner_rnn = InnerRNN(K=k).to(device)
 
 		self.batch_size = batch_size
 		self.k = k
