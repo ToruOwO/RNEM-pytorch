@@ -5,7 +5,6 @@ import os
 
 # Device configuration
 use_gpu = torch.cuda.is_available()
-device = torch.device('cuda' if use_gpu else 'cpu')
 
 def create_directory(dir_name):
 	if not os.path.exists(dir_name):

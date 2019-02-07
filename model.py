@@ -384,7 +384,7 @@ class DecoderLayer(nn.Module):
 class RecurrentLayer(nn.Module):
 	def __init__(self, K):
 		super(RecurrentLayer, self).__init__()
-		self.r_nem = R_NEM(K).to(device)
+		self.r_nem = R_NEM(K)
 		self.layer_norm = LayerNormWrapper(apply_to="x")
 		self.act1 = ActivationFunctionWrapper("sigmoid", apply_to="state")
 		self.act2 = ActivationFunctionWrapper("sigmoid", apply_to="x")

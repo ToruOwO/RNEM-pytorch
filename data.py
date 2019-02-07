@@ -87,7 +87,7 @@ class Data(Dataset):
 		d = self.data[idx, :, :, :, :, :]
 
 		# convert data to PyTorch tensor
-		t = torch.tensor(d.astype(np.float32)).to(device)
+		t = torch.tensor(d.astype(np.float32))
 
 		return t
 
