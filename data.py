@@ -1,9 +1,10 @@
 # import cv2
 import os
+
 import h5py
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 
 # Device configuration
 use_gpu = torch.cuda.is_available()
@@ -15,6 +16,7 @@ train_size = None
 valid_size = None
 test_size = None
 batch_size = 64
+
 
 class Data(Dataset):
 	"""
@@ -29,6 +31,7 @@ class Data(Dataset):
 		sequence_length(int): number of frames to use
 		attribute(str): attribute used
 	"""
+
 	def __init__(self, data_name, phase, batch_id, sequence_length=51, attribute='features'):
 		if data_name not in data_names:
 			print("Dataset does not exist")
@@ -56,7 +59,7 @@ class Data(Dataset):
 		H - height
 		C - number of channels
 		"""
-		print("Loading data from file ...")
+		print("Loading data [{}] from file ...".format(self.attribute))
 		file_path = os.path.join(data_path, self.data_name + '.h5')
 		f = h5py.File(file_path, 'r')
 
@@ -67,7 +70,7 @@ class Data(Dataset):
 		data_shape = (self.sequence_length, batch_size, 1) + f[self.phase][self.attribute].shape[2:]
 		self.data_shape = data_shape
 
-		start_idx, end_idx = batch_id * batch_size, (batch_id+1) * batch_size
+		start_idx, end_idx = batch_id * batch_size, (batch_id + 1) * batch_size
 		data = f[self.phase][self.attribute][:self.sequence_length, start_idx:end_idx, :, :, :]
 
 		# reshape data accordingly
@@ -87,7 +90,7 @@ class Data(Dataset):
 		d = self.data[idx, :, :, :, :, :]
 
 		# convert data to PyTorch tensor
-		t = torch.tensor(d.astype(np.float32)).to(device)
+		t = torch.tensor(d.astype(np.float32))
 
 		return t
 
@@ -97,12 +100,3 @@ class Data(Dataset):
 	@staticmethod
 	def get_num_batches():
 		return 50000 // batch_size
-
-
-# train_data = Data('balls3curtain64', 'training')
-# print("Number of sequences in training data:", len(train_data))
-# print("Data shape", train_data)
-# print("Torch size of each sequence:", train_data[0].shape)
-
-# dataloader = DataLoader(train_data, batch_size=batch_size, 
-# 						shuffle=True, num_workers=0)

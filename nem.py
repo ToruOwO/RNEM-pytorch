@@ -11,6 +11,7 @@ from model import InnerRNN
 use_gpu = torch.cuda.is_available()
 device = torch.device('cuda' if use_gpu else 'cpu')
 
+
 class NEM(nn.Module):
 	def __init__(self, batch_size, k, input_size, hidden_size):
 		super(NEM, self).__init__()
@@ -21,9 +22,9 @@ class NEM(nn.Module):
 
 		# shape of hidden variables
 		gamma_size = input_size[:-1] + (1,)
-		self.hidden_size = hidden_size   # 250
-		self.input_size = input_size     # (W, H, C)
-		self.gamma_size = gamma_size     # (W, H, 1)
+		self.hidden_size = hidden_size  # 250
+		self.input_size = input_size  # (W, H, C)
+		self.gamma_size = gamma_size  # (W, H, 1)
 
 		h, pred, gamma = self.init_state()
 		self.h = nn.Parameter(h)
@@ -42,7 +43,7 @@ class NEM(nn.Module):
 		batch_size, K = self.batch_size, self.k
 
 		# initialize h, the latent representation of each object
-		h = torch.zeros(batch_size*K, self.hidden_size, dtype=dtype)
+		h = torch.zeros(batch_size * K, self.hidden_size, dtype=dtype)
 
 		# initialize pred, the (predicted) true assignment of pixels to objects
 		pred = torch.zeros(batch_size, K, *self.input_size, dtype=dtype)
@@ -81,7 +82,7 @@ class NEM(nn.Module):
 		"""
 		Mask the deltas (inputs to RNN) by gamma.
 		:param rnn_inputs: (B, K, W, H, C)
-		    Note: This is a list to later support multiple inputs
+		Note: This is a list to later support multiple inputs
 		:param gamma: (B, K, W, H, 1)
 
 		:return: masked deltas (B, K, W, H, C)
