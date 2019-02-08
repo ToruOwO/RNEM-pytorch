@@ -338,13 +338,13 @@ def rollout_from_file():
 		preds.append(pred)
 
 
-def print_log_dict(usage, loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
+def print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
                    r_other_ub_losses, loss_step_weights):
 	dt = args.dt
 	s_loss_weights = np.sum(loss_step_weights)
 	dt_s_loss_weights = np.sum(loss_step_weights[-dt:])
 
-	print("%s Loss: %.3f (UB: %.3f), Relational Loss: %.3f (UB: %.3f)" % (usage, loss, ub_loss, r_loss, r_ub_loss))
+	print("Loss: %.3f (UB: %.3f), Relational Loss: %.3f (UB: %.3f)" % (loss, ub_loss, r_loss, r_ub_loss))
 
 	print("    other losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
 	                                               (other_losses[:, i].sum(0) / s_loss_weights,
