@@ -338,7 +338,7 @@ def rollout_from_file():
 		preds.append(pred)
 
 
-def print_log_dict(usage, loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, \
+def print_log_dict(usage, loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
                    r_other_ub_losses, loss_step_weights):
 	dt = args.dt
 	s_loss_weights = np.sum(loss_step_weights)
@@ -410,7 +410,7 @@ def run_from_file():
 			                                                                model,
 			                                                                collisions=inputs.get('collisions', None))
 
-			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, \
+			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
 			               r_other_ub_losses, loss_step_weights)
 
 
@@ -484,7 +484,7 @@ def run():
 			                                                                collisions=valid_inputs.get('collisions',
 			                                                                                            None))
 
-			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, \
+			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
 			               r_other_ub_losses, loss_step_weights)
 
 			if loss < best_valid_loss:
