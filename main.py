@@ -446,64 +446,70 @@ def run():
 		print("Starting epoch {}...".format(epoch))
 
 		for b in range(Data.get_num_batches()):
-			train_inputs = {
-				attribute: Data(args.data_name, 'training', b, sequence_length=nr_iters, attribute=attribute)
-				for attribute in attribute_list
-			}
-			valid_inputs = {
-				attribute: Data(args.data_name, 'validation', b, sequence_length=nr_iters, attribute=attribute)
-				for attribute in attribute_list
-			}
+			try:
+				train_inputs = {
+					attribute: Data(args.data_name, 'training', b, sequence_length=nr_iters, attribute=attribute)
+					for attribute in attribute_list
+				}
+				valid_inputs = {
+					attribute: Data(args.data_name, 'validation', b, sequence_length=nr_iters, attribute=attribute)
+					for attribute in attribute_list
+				}
 
-			# convert numpy bool array to tensor on GPU
-			for k, v in train_inputs.items():
-				train_inputs[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
-			for k, v in valid_inputs.items():
-				valid_inputs[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
+				# convert numpy bool array to tensor on GPU
+				for k, v in train_inputs.items():
+					train_inputs[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
+				for k, v in valid_inputs.items():
+					valid_inputs[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
 
-			# training phase
-			features_corrupted = add_noise(train_inputs['features'], noise_type=args.noise_type)
-			features = train_inputs['features']
+				# training phase
+				features_corrupted = add_noise(train_inputs['features'], noise_type=args.noise_type)
+				features = train_inputs['features']
 
-			# TODO: convert into a log dict
-			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
-			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
-			                                                                features,
-			                                                                train_model,
-			                                                                collisions=train_inputs.get('collisions',
-			                                                                                            None))
+				# TODO: convert into a log dict
+				loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
+				r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
+				                                                                features,
+				                                                                train_model,
+				                                                                collisions=train_inputs.get('collisions',
+				                                                                                            None))
 
-			# validation phase
-			features_corrupted_valid = add_noise(valid_inputs['features'], noise_type=args.noise_type)
-			features_valid = valid_inputs['features']
+				# validation phase
+				features_corrupted_valid = add_noise(valid_inputs['features'], noise_type=args.noise_type)
+				features_valid = valid_inputs['features']
 
-			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
-			r_other_losses, r_other_ub_losses, valid_model = nem_iterations(features_corrupted_valid,
-			                                                                features_valid,
-			                                                                train_model,
-			                                                                collisions=valid_inputs.get('collisions',
-			                                                                                            None))
+				loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
+				r_other_losses, r_other_ub_losses, valid_model = nem_iterations(features_corrupted_valid,
+				                                                                features_valid,
+				                                                                train_model,
+				                                                                collisions=valid_inputs.get('collisions',
+				                                                                                            None))
 
-			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
-			               r_other_ub_losses, loss_step_weights)
+				print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
+				               r_other_ub_losses, loss_step_weights)
 
-			if loss < best_valid_loss:
-				best_valid_loss = loss
-				best_valid_epoch = epoch
-				print("Best validation loss improved to %.03f" % best_valid_loss)
-				print("Best valid epoch [{}/{}]".format(best_valid_epoch, args.max_epoch + 1))
-				torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'best.pth')))
-				print("===Saved to:", args.save_dir)
+				if loss < best_valid_loss:
+					best_valid_loss = loss
+					best_valid_epoch = epoch
+					print("Best validation loss improved to %.03f" % best_valid_loss)
+					print("Best valid epoch [{}/{}]".format(best_valid_epoch, args.max_epoch + 1))
+					torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'best.pth')))
+					print("===Saved to:", args.save_dir)
 
-			if epoch % args.log_per_iter == 0:
-				print("Epoch [{}/{}], Batch [{}/{}], Loss: {:.4f}".format(epoch, args.max_epoch, b,
-				                                                          Data.get_num_batches(), loss))
-				torch.save(train_model.state_dict(),
-				           os.path.abspath(os.path.join(log_dir, 'epoch_{}_batch_{}.pth'.format(epoch, b))))
+				if epoch % args.log_per_iter == 0:
+					print("Epoch [{}/{}], Batch [{}/{}], Loss: {:.4f}".format(epoch, args.max_epoch, b,
+					                                                          Data.get_num_batches(), loss))
+					torch.save(train_model.state_dict(),
+					           os.path.abspath(os.path.join(log_dir, 'epoch_{}_batch_{}.pth'.format(epoch, b))))
 
-			if np.isnan(loss.detach()):
-				print("Early Stopping because validation loss is nan")
-				break
+				if np.isnan(loss.detach()):
+					print("Early Stopping because validation loss is nan")
+					break
+			except:
+				# save on interrupt
+				print("Training interrupted. Saving model epoch_{}_batch_{}...".format(epoch, b))
+				torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'E_epoch_{}_batch_{'
+				                                                                           '}.pth'.format(epoch, b))))
 
 
 if __name__ == '__main__':
