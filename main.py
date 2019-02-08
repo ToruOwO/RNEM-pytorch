@@ -113,7 +113,7 @@ def compute_outer_ub_loss(pred, target, prior, collision):
 	return total_ub_loss, intra_ub_loss, inter_ub_loss, r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss
 
 
-def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old, collisions=None):
+def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old, nem_model, collisions=None):
 	# get input dimensions
 	input_shape = input_data.size()
 
@@ -121,18 +121,7 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 
 	assert len(input_shape) == 5, "Requires 5D input (B, K, W, H, C)"
 	W, H, C = (x for x in input_shape[-3:])
-
-	# set up NEM model
-	nem_model = NEM(batch_size=input_shape[1],
-	                k=args.k,
-	                input_size=(W, H, C),
-	                hidden_size=args.inner_hidden_size).to(device)
-
-	if args.saved_model != None and args.saved_model != "":
-		# load trained NEM model if exists
-		saved_model_path = os.path.join(args.save_dir, args.saved_model)
-		assert os.path.isfile(saved_model_path), "Path to model does not exist"
-		nem_model.load_state_dict(torch.load(saved_model_path))
+	assert (W, H, C) == nem_model.input_size, "Require NEM input size to be (W, H, C)"
 
 	nem_model.eval()
 
@@ -169,7 +158,7 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	       other_ub_losses, r_other_losses, r_other_ub_losses
 
 
-def nem_iterations(input_data, target_data, collisions=None, is_training=True):
+def nem_iterations(input_data, target_data, nem_model, collisions=None, is_training=True):
 	# get input dimensions
 	input_shape = input_data.size()
 
@@ -177,18 +166,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 
 	assert len(input_shape) == 6, "Requires 6D input (T, B, K, W, H, C)"
 	W, H, C = (x for x in input_shape[-3:])
-
-	# set up initial inner RNN and NEM model
-	nem_model = NEM(batch_size=input_shape[1],
-	                k=args.k,
-	                input_size=(W, H, C),
-	                hidden_size=args.inner_hidden_size).to(device)
-
-	if args.saved_model != None and args.saved_model != "":
-		# load trained NEM model if exists
-		saved_model_path = os.path.join(args.save_dir, args.saved_model)
-		assert os.path.isfile(saved_model_path), "Path to model does not exist"
-		nem_model.load_state_dict(torch.load(saved_model_path))
+	assert (W, H, C) == nem_model.input_size, "Require NEM input size to be (W, H, C)"
 
 	# compute Bernoulli prior of pixels
 	prior = compute_bernoulli_prior()
@@ -217,8 +195,6 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 		nem_model.train()
 	else:
 		nem_model.eval()
-
-	losses = 0.0
 
 	for t, loss_weight in enumerate(loss_step_weights):
 		# model should predict the next frame
@@ -308,6 +284,18 @@ def rollout_from_file():
 
 	corrupted, scores, gammas, thetas, preds = [], [], [gamma], [theta], [pred]
 
+	# set up model
+	model = NEM(batch_size=args.batch_size,
+	            k=args.k,
+	            input_size=(64, 64, 1),
+	            hidden_size=args.inner_hidden_size).to(device)
+
+	# a model must be provided in order to rollout from file
+	assert args.saved_model != None and args.saved_model != "", "Please provide a pre-trained model"
+	saved_model_path = os.path.join(args.save_dir, args.saved_model)
+	assert os.path.isfile(saved_model_path), "Path to model does not exist"
+	model.load_state_dict(torch.load(saved_model_path))
+
 	# run rollout steps
 	for t in range(nr_iters - 1):
 		if 'collisions' in input_data:
@@ -323,6 +311,7 @@ def rollout_from_file():
 		                                                           gamma_old=gamma,
 		                                                           h_old=theta,
 		                                                           preds_old=pred,
+                                                                   model=model,
 		                                                           collisions=collisions)
 
 		# re-compute gamma if rollout
@@ -382,6 +371,18 @@ def run_from_file():
 	nr_iters = args.nr_steps + 1
 	loss_step_weights = [1.0] * args.nr_steps
 
+	# set up model
+	model = NEM(batch_size=args.batch_size,
+	            k=args.k,
+	            input_size=(64, 64, 1),
+	            hidden_size=args.inner_hidden_size).to(device)
+
+	# a model must be provided in order to run from file
+	assert args.saved_model != None and args.saved_model != "", "Please provide a pre-trained model"
+	saved_model_path = os.path.join(args.save_dir, args.saved_model)
+	assert os.path.isfile(saved_model_path), "Path to model does not exist"
+	model.load_state_dict(torch.load(saved_model_path))
+
 	# TODO: record data using dictionary
 	for epoch in range(1, args.max_epoch + 1):
 		print("Starting epoch {}...".format(epoch))
@@ -404,6 +405,7 @@ def run_from_file():
 			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
 			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
 			                                                                features,
+                                                                            model,
 			                                                                collisions=inputs.get('collisions', None))
 
 			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, \
@@ -419,6 +421,18 @@ def run():
 	# set up input data
 	attribute_list = ('features', 'groups')
 	nr_iters = args.nr_steps + 1
+
+	# set up model
+	train_model = NEM(batch_size=args.batch_size,
+	                  k=args.k,
+	                  input_size=(64, 64, 1),
+	                  hidden_size=args.inner_hidden_size).to(device)
+
+	if args.saved_model != None and args.saved_model != "":
+		# load trained NEM model if exists
+		saved_model_path = os.path.join(args.save_dir, args.saved_model)
+		assert os.path.isfile(saved_model_path), "Path to model does not exist"
+		train_model.load_state_dict(torch.load(saved_model_path))
 
 	# training
 	best_valid_loss = np.inf
@@ -452,6 +466,7 @@ def run():
 			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
 			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
 			                                                                features,
+                                                                            train_model,
 			                                                                collisions=train_inputs.get('collisions',
 			                                                                                            None))
 
@@ -462,6 +477,7 @@ def run():
 			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
 			r_other_losses, r_other_ub_losses, valid_model = nem_iterations(features_corrupted_valid,
 			                                                                features_valid,
+                                                                            train_model,
 			                                                                collisions=valid_inputs.get('collisions',
 			                                                                                            None))
 
@@ -498,7 +514,7 @@ if __name__ == '__main__':
 	parser.add_argument('--max_epoch', type=int, default=500)
 	parser.add_argument('--dt', type=int, default=10)
 	parser.add_argument('--noise_type', type=str, default='bitflip')
-	parser.add_argument('--log_per_iter', type=int, default=10)
+	parser.add_argument('--log_per_iter', type=int, default=1)
 	parser.add_argument('--step_log_per_iter', type=int, default=10)
 	parser.add_argument('--k', type=int, default=5)
 	parser.add_argument('--data_batch_size', type=int, default=10)
