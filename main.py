@@ -67,8 +67,8 @@ def compute_outer_loss(mu, gamma, target, prior, collision):
 	# use KL divergence as inter loss
 	inter_criterion = KLDivLoss().to(device)
 
-	intra_loss = intra_criterion(mu, target)
-	inter_loss = inter_criterion(prior, mu)
+	intra_loss = intra_criterion(mu, target, use_gpu=use_gpu)
+	inter_loss = inter_criterion(prior, mu, use_gpu=use_gpu)
 
 	batch_size = target.size()[0]
 
@@ -528,16 +528,17 @@ if __name__ == '__main__':
 
 	### for testing purpose
 	parser.add_argument('--cpu', type=bool, default=False)
-	if args.cpu:
-		use_gpu = False
-	else:
-		use_gpu = torch.cuda.is_available()
-	device = torch.device('cuda' if use_gpu else 'cpu')
 
 	args = parser.parse_args()
 	print("=== Arguments ===")
 	print(args)
 	print()
+
+	if args.cpu:
+		use_gpu = False
+	else:
+		use_gpu = torch.cuda.is_available()
+	device = torch.device('cuda' if use_gpu else 'cpu')
 
 	if args.eval:
 		run_from_file()

@@ -3,8 +3,6 @@ import os
 import torch
 import torch.nn as nn
 
-from main import use_gpu
-
 
 def create_directory(dir_name):
 	if not os.path.exists(dir_name):
@@ -28,7 +26,7 @@ class BCELoss(nn.Module):
 	def __init__(self):
 		super(BCELoss, self).__init__()
 
-	def forward(self, y, t):
+	def forward(self, y, t, use_gpu=False):
 		clipped_y = torch.clamp(y, 1e-6, 1. - 1.e-6)
 		res = -(t * torch.log(clipped_y) + (1. - t) * torch.log(1. - clipped_y))
 		if use_gpu:
@@ -42,7 +40,7 @@ class KLDivLoss(nn.Module):
 	def __init__(self):
 		super(KLDivLoss, self).__init__()
 
-	def forward(self, p1, p2):
+	def forward(self, p1, p2, use_gpu=False):
 		res = p1 * torch.log(torch.clamp(p1 / torch.clamp(p2, 1e-6, 1e6), 1e-6, 1e6)) + (1 - p1) * torch.log(
 			torch.clamp((1 - p1) / torch.clamp(1 - p2, 1e-6, 1e6), 1e-6, 1e6))
 		if use_gpu:

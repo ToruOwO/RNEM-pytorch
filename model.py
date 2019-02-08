@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from main import device
 
 # dict of activation functions
 ACTIVATION_FUNCTIONS = {
@@ -172,8 +171,10 @@ class OutputWrapper(nn.Module):
 
 
 class R_NEM(nn.Module):
-	def __init__(self, K, fc_size=250, last_fc_size=100):
+	def __init__(self, K, fc_size=250, last_fc_size=100, device='cpu'):
 		super(R_NEM, self).__init__()
+
+		self.device = device
 
 		self.fc_size = fc_size
 		self.last_fc_size = last_fc_size
@@ -219,6 +220,8 @@ class R_NEM(nn.Module):
 		# 9. Actions: Optionally embed actions into some representation
 
 		"""
+		device = self.device
+
 		b, k, m = self.get_shapes(x)
 
 		self.encoder = nn.Sequential(
@@ -310,8 +313,10 @@ class R_NEM(nn.Module):
 
 
 class EncoderLayer(nn.Module):
-	def __init__(self):
+	def __init__(self, device='cpu'):
 		super(EncoderLayer, self).__init__()
+		self.device = device
+
 		self.reshape1 = ReshapeWrapper((64, 64, 1), apply_to="x")
 		self.conv1 = None
 		self.conv2 = None
@@ -320,6 +325,8 @@ class EncoderLayer(nn.Module):
 		self.fc1 = None
 
 	def forward(self, x, state):
+		device = self.device
+
 		# reshape the input to (64, 64, 1)
 		x, state = self.reshape1(x, state)
 
@@ -345,8 +352,10 @@ class EncoderLayer(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-	def __init__(self):
+	def __init__(self, device='cpu'):
 		super(DecoderLayer, self).__init__()
+		self.device = device
+
 		self.fc1 = None
 		self.fc2 = None
 		self.reshape1 = None
@@ -356,6 +365,8 @@ class DecoderLayer(nn.Module):
 		self.reshape2 = None
 
 	def forward(self, x, state):
+		device = self.device
+
 		self.fc1 = OutputWrapper(x.size(), fc_output_size=512).to(device)
 		x, state = self.fc1(x, state)
 
@@ -381,9 +392,9 @@ class DecoderLayer(nn.Module):
 
 
 class RecurrentLayer(nn.Module):
-	def __init__(self, K):
+	def __init__(self, K, device='cpu'):
 		super(RecurrentLayer, self).__init__()
-		self.r_nem = R_NEM(K)
+		self.r_nem = R_NEM(K, device=device)
 		self.layer_norm = LayerNormWrapper(apply_to="x")
 		self.act1 = ActivationFunctionWrapper("sigmoid", apply_to="state")
 		self.act2 = ActivationFunctionWrapper("sigmoid", apply_to="x")
@@ -398,12 +409,12 @@ class RecurrentLayer(nn.Module):
 
 
 class InnerRNN(nn.Module):
-	def __init__(self, K):
+	def __init__(self, K, device='cpu'):
 		super(InnerRNN, self).__init__()
 
-		self.encoder = EncoderLayer()
-		self.recurrent = RecurrentLayer(K)
-		self.decoder = DecoderLayer()
+		self.encoder = EncoderLayer(device=device)
+		self.recurrent = RecurrentLayer(K, device=device)
+		self.decoder = DecoderLayer(device=device)
 
 	def forward(self, x, state):
 		x, state = self.encoder(x, state)
