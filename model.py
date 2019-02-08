@@ -3,9 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# Device configuration
-use_gpu = torch.cuda.is_available()
-device = torch.device('cuda' if use_gpu else 'cpu')
+from main import device
 
 # dict of activation functions
 ACTIVATION_FUNCTIONS = {

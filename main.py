@@ -14,8 +14,8 @@ from nem import NEM
 from utils import BCELoss, KLDivLoss
 
 # Device configuration
-use_gpu = torch.cuda.is_available()
-device = torch.device('cuda' if use_gpu else 'cpu')
+use_gpu = None
+device = None
 
 args = None
 
@@ -311,7 +311,7 @@ def rollout_from_file():
 		                                                           gamma_old=gamma,
 		                                                           h_old=theta,
 		                                                           preds_old=pred,
-                                                                   model=model,
+		                                                           model=model,
 		                                                           collisions=collisions)
 
 		# re-compute gamma if rollout
@@ -405,7 +405,7 @@ def run_from_file():
 			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
 			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
 			                                                                features,
-                                                                            model,
+			                                                                model,
 			                                                                collisions=inputs.get('collisions', None))
 
 			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, \
@@ -466,7 +466,7 @@ def run():
 			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
 			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
 			                                                                features,
-                                                                            train_model,
+			                                                                train_model,
 			                                                                collisions=train_inputs.get('collisions',
 			                                                                                            None))
 
@@ -477,7 +477,7 @@ def run():
 			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
 			r_other_losses, r_other_ub_losses, valid_model = nem_iterations(features_corrupted_valid,
 			                                                                features_valid,
-                                                                            train_model,
+			                                                                train_model,
 			                                                                collisions=valid_inputs.get('collisions',
 			                                                                                            None))
 
@@ -522,6 +522,14 @@ if __name__ == '__main__':
 	parser.add_argument('--saved_model', type=str, default='')
 	parser.add_argument('--rollout_steps', type=int, default=10)
 	parser.add_argument('--eval', type=bool, default=False)
+
+	### for testing purpose
+	parser.add_argument('--cpu', type=bool, default=False)
+	if args.cpu:
+		use_gpu = False
+	else:
+		use_gpu = torch.cuda.is_available()
+	device = torch.device('cuda' if use_gpu else 'cpu')
 
 	args = parser.parse_args()
 	print("=== Arguments ===")

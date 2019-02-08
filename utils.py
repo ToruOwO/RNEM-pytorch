@@ -3,8 +3,7 @@ import os
 import torch
 import torch.nn as nn
 
-# Device configuration
-use_gpu = torch.cuda.is_available()
+from main import use_gpu
 
 
 def create_directory(dir_name):

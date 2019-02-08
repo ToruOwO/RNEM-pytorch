@@ -5,11 +5,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from main import device
 from model import InnerRNN
-
-# Device configuration
-use_gpu = torch.cuda.is_available()
-device = torch.device('cuda' if use_gpu else 'cpu')
 
 
 class NEM(nn.Module):
