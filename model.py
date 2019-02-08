@@ -9,15 +9,15 @@ device = torch.device('cuda' if use_gpu else 'cpu')
 
 # dict of activation functions
 ACTIVATION_FUNCTIONS = {
-    'sigmoid': F.sigmoid,
-    'tanh': F.tanh,
-    'relu': F.relu,
-    'elu': F.elu,
-    'linear': lambda x: x,
-    'exp': lambda x: torch.exp(x),
-    'softplus': F.softplus,
-    'clip': lambda x: torch.clamp(x, min=-1., max=1.),
-    'clip_low': lambda x: torch.clamp(x, min=-1., max=1e6)
+	'sigmoid': F.sigmoid,
+	'tanh': F.tanh,
+	'relu': F.relu,
+	'elu': F.elu,
+	'linear': lambda x: x,
+	'exp': lambda x: torch.exp(x),
+	'softplus': F.softplus,
+	'clip': lambda x: torch.clamp(x, min=-1., max=1.),
+	'clip_low': lambda x: torch.clamp(x, min=-1., max=1e6)
 }
 
 
@@ -28,6 +28,7 @@ class ReshapeWrapper(nn.Module):
 	:param: shape - Torch.size
 	:param: apply_to - whether apply to x or state in __call__
 	"""
+
 	def __init__(self, shape, apply_to):
 		super(ReshapeWrapper, self).__init__()
 		self.shape = shape
@@ -110,7 +111,7 @@ class InputWrapper(nn.Module):
 
 		# since input size for Conv2D layer is (B, C, H, W),
 		# reshape x from (B, W, H, C) to (B, C, W, H)
-		reshape_dim = tuple([0] + [i for i in range(len(x.size())-1, 0, -1)])
+		reshape_dim = tuple([0] + [i for i in range(len(x.size()) - 1, 0, -1)])
 
 		x = self.main_layer(x.permute(reshape_dim))
 
@@ -151,7 +152,7 @@ class OutputWrapper(nn.Module):
 			# since input size for Conv2D layer is (B, C, H, W),
 			# reshape "resized" from (B, W, H, C) to (B, C, W, H)
 			resized = x.permute(0, 3, 2, 1)
-			resized = F.interpolate(resized, (4*x.size()[1], 4*x.size()[2]), mode="bilinear")
+			resized = F.interpolate(resized, (4 * x.size()[1], 4 * x.size()[2]), mode="bilinear")
 
 			projected = self.main_layer(resized)
 
@@ -188,8 +189,8 @@ class R_NEM(nn.Module):
 		self.K = K
 
 	def get_shapes(self, x):
-		bk = x.size()[0] # batch size * K
-		m = x.size()[1] # np.prod(input_size.as_list())
+		bk = x.size()[0]  # batch size * K
+		m = x.size()[1]  # np.prod(input_size.as_list())
 		return bk // self.K, self.K, m
 
 	def forward(self, x, state):
@@ -229,38 +230,38 @@ class R_NEM(nn.Module):
 		).to(device)
 
 		# encode theta
-		state1 = self.encoder(state)   # (b*k, h1)
+		state1 = self.encoder(state)  # (b*k, h1)
 
 		# reshape theta to be used for context
 		h1 = state1.size()[1]
-		state1r = state1.view(b, k, h1)   # (b, k, h1)
+		state1r = state1.view(b, k, h1)  # (b, k, h1)
 
 		# reshape theta to be used for focus
-		state1rr = state1r.view(b, k, 1, h1)   # (b, k, 1, h1)
+		state1rr = state1r.view(b, k, 1, h1)  # (b, k, 1, h1)
 
 		# create focus
-		fs = state1rr.repeat(1, 1, k-1, 1)   # (b, k, k-1, h1)
+		fs = state1rr.repeat(1, 1, k - 1, 1)  # (b, k, k-1, h1)
 
 		# create context
-		state1rl = torch.unbind(state1r, dim=1)   # list of length k of (b, h1)
+		state1rl = torch.unbind(state1r, dim=1)  # list of length k of (b, h1)
 
 		if k > 1:
 			csu = []
 			for i in range(k):
 				selector = [j for j in range(k) if j != i]
-				c = list(np.take(state1rl, selector))   # list of length k-1 of (b, h1)
+				c = list(np.take(state1rl, selector))  # list of length k-1 of (b, h1)
 				c = torch.stack(c, dim=1)
 				csu.append(c)
 
 			cs = torch.stack(csu, dim=1)
 		else:
-			cs = torch.zeros(b, k, k-1, h1)
+			cs = torch.zeros(b, k, k - 1, h1)
 
 		# reshape focus and context
-		fsr, csr = fs.view(b*k*(k-1), h1), cs.view(b*k*(k-1), h1)   # (b*k*(k-1), h1)
+		fsr, csr = fs.view(b * k * (k - 1), h1), cs.view(b * k * (k - 1), h1)  # (b*k*(k-1), h1)
 
 		# concatenate focus and context
-		concat = torch.cat([fsr, csr], dim=1)   # (b*k*(k-1), 2*h1)
+		concat = torch.cat([fsr, csr], dim=1)  # (b*k*(k-1), 2*h1)
 
 		# core
 		self.core = nn.Sequential(
@@ -269,7 +270,7 @@ class R_NEM(nn.Module):
 			nn.ReLU()
 		).to(device)
 
-		core_out = self.core(concat)   # (b*k*(k-1), h1)
+		core_out = self.core(concat)  # (b*k*(k-1), h1)
 
 		# context; obtained from core_out
 		self.context = nn.Sequential(
@@ -278,10 +279,10 @@ class R_NEM(nn.Module):
 			nn.ReLU()
 		).to(device)
 
-		context_out = self.context(core_out)   # (b*k*(k-1), h2)
+		context_out = self.context(core_out)  # (b*k*(k-1), h2)
 
 		h2 = self.fc_size
-		contextr = context_out.view(b*k, k-1, h2)   # (b*k, k-1, h2)
+		contextr = context_out.view(b * k, k - 1, h2)  # (b*k, k-1, h2)
 
 		# attention coefficients; obtained from core_out
 
@@ -293,19 +294,19 @@ class R_NEM(nn.Module):
 			nn.Sigmoid()
 		).to(device)
 
-		attention_out = self.attention(core_out)   # (b*k*(k-1), 1)
+		attention_out = self.attention(core_out)  # (b*k*(k-1), 1)
 
 		# produce effect as sum(context_out * attention_out)
-		attentionr = attention_out.view(b*k, k-1, 1)
-		effect_sum = torch.sum(contextr * attentionr, dim=1)   # (b*k, h2)
+		attentionr = attention_out.view(b * k, k - 1, 1)
+		effect_sum = torch.sum(contextr * attentionr, dim=1)  # (b*k, h2)
 
 		# calculate new state (where the input from encoder comes in)
 		# concatenate (state1, effect_sum, inputs)
-		total = torch.cat([state1, effect_sum, x], dim=1)   # (b*k, h1+h2+m)
+		total = torch.cat([state1, effect_sum, x], dim=1)  # (b*k, h1+h2+m)
 
 		# produce recurrent update
-		out_fc = nn.Linear(h1+h2+m, self.fc_size).to(device)
-		new_state = out_fc(total)   # (b*k, h)
+		out_fc = nn.Linear(h1 + h2 + m, self.fc_size).to(device)
+		new_state = out_fc(total)  # (b*k, h)
 
 		return new_state, new_state
 
@@ -360,7 +361,7 @@ class DecoderLayer(nn.Module):
 		self.fc1 = OutputWrapper(x.size(), fc_output_size=512).to(device)
 		x, state = self.fc1(x, state)
 
-		self.fc2 = OutputWrapper(x.size(), fc_output_size=8*8*64).to(device)
+		self.fc2 = OutputWrapper(x.size(), fc_output_size=8 * 8 * 64).to(device)
 		x, state = self.fc2(x, state)
 
 		self.reshape1 = ReshapeWrapper((8, 8, 64), apply_to="x")

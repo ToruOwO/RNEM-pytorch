@@ -1,13 +1,14 @@
+import os
+
 import argparse
 import numpy as np
-import os
-import utils
 import torch
+import torch.distributions as dist
 import torch.nn as nn
 import torch.optim as optim
-import torch.distributions as dist
 import torch.utils.data
 
+import utils
 from data import Data
 from nem import NEM
 from utils import BCELoss, KLDivLoss
@@ -17,6 +18,7 @@ use_gpu = torch.cuda.is_available()
 device = torch.device('cuda' if use_gpu else 'cpu')
 
 args = None
+
 
 def add_noise(data, noise_type=None, noise_prob=0.2):
 	"""
@@ -164,7 +166,7 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	r_other_ub_losses = torch.stack((r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss))
 
 	return total_loss, total_ub_loss, r_total_loss, r_total_ub_loss, theta, pred, gamma, other_losses, \
-		   other_ub_losses, r_other_losses, r_other_ub_losses
+	       other_ub_losses, r_other_losses, r_other_ub_losses
 
 
 def nem_iterations(input_data, target_data, collisions=None, is_training=True):
@@ -220,7 +222,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 
 	for t, loss_weight in enumerate(loss_step_weights):
 		# model should predict the next frame
-		inputs = (input_data[t], target_data[t+1])
+		inputs = (input_data[t], target_data[t + 1])
 
 		assert len(input_data[t]) == len(target_data[t + 1]), \
 			"Input data and target data must have the same shape"
@@ -236,11 +238,11 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 
 		# compute NEM losses
 		total_loss, intra_loss, inter_loss, r_total_loss, r_intra_loss, r_inter_loss \
-			= compute_outer_loss(pred, gamma, target_data[t+1], prior, collision=collision)
+			= compute_outer_loss(pred, gamma, target_data[t + 1], prior, collision=collision)
 
 		# compute estimated loss upper bound (which doesn't use E-step)
 		total_ub_loss, intra_ub_loss, inter_ub_loss, r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss \
-			= compute_outer_ub_loss(pred, target_data[t+1], prior, collision=collision)
+			= compute_outer_ub_loss(pred, target_data[t + 1], prior, collision=collision)
 
 		total_losses.append(total_loss)
 		total_ub_losses.append(total_ub_loss)
@@ -254,7 +256,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 		r_other_losses.append(torch.stack((r_total_loss, r_intra_loss, r_inter_loss)))
 		r_other_ub_losses.append(torch.stack((r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss)))
 
-		outputs.append(output)   # thetas, preds, gammas
+		outputs.append(output)  # thetas, preds, gammas
 
 		if t % args.step_log_per_iter == 0:
 			print("Step [{}/{}], Loss: {:.4f}".format(t, args.nr_steps, total_loss))
@@ -281,7 +283,7 @@ def nem_iterations(input_data, target_data, collisions=None, is_training=True):
 	r_total_ub_loss = torch.sum(torch.stack(r_total_ub_losses)) / np.sum(loss_step_weights)
 
 	return total_loss, total_ub_loss, r_total_loss, r_total_ub_loss, thetas, preds, gammas, other_losses, \
-		other_ub_losses, r_other_losses, r_other_ub_losses, nem_model
+	       other_ub_losses, r_other_losses, r_other_ub_losses, nem_model
 
 
 def rollout_from_file():
@@ -291,21 +293,21 @@ def rollout_from_file():
 
 	input_data = {
 		attribute: Data(args.data_name,
-						'test',
-						batch_id=0,
-						sequence_length=nr_iters,
-						attribute=attribute) for attribute in attribute_list
+		                'test',
+		                batch_id=0,
+		                sequence_length=nr_iters,
+		                attribute=attribute) for attribute in attribute_list
 	}
 
 	# initialize RNN hidden state, prediction and gamma
 	theta = torch.zeros(args.batch_size * args.k, 250)
-	pred = torch.ones(args.batch_size, args.k, 64, 64, 1)                  # (B, K, W, H, C)
-	gamma = np.abs(np.random.randn(args.batch_size, args.k, 64, 64, 1))    # (B, K, W, H, 1)
+	pred = torch.ones(args.batch_size, args.k, 64, 64, 1)  # (B, K, W, H, C)
+	gamma = np.abs(np.random.randn(args.batch_size, args.k, 64, 64, 1))  # (B, K, W, H, 1)
 	gamma /= np.sum(gamma, axis=1, keepdims=True)
 	gamma = torch.from_numpy(gamma)
 
 	corrupted, scores, gammas, thetas, preds = [], [], [gamma], [theta], [pred]
-	
+
 	# run rollout steps
 	for t in range(nr_iters - 1):
 		if 'collisions' in input_data:
@@ -317,11 +319,11 @@ def rollout_from_file():
 
 		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
 		r_other_losses, r_other_ub_losses = dynamic_nem_iterations(input_data=corr,
-																	target_data=input_data['features'][t+1],
-																	gamma_old=gamma,
-																	h_old=theta,
-																	preds_old=pred,
-																	collisions=collisions)
+		                                                           target_data=input_data['features'][t + 1],
+		                                                           gamma_old=gamma,
+		                                                           h_old=theta,
+		                                                           preds_old=pred,
+		                                                           collisions=collisions)
 
 		# re-compute gamma if rollout
 		if t >= args.nr_steps:
@@ -347,32 +349,32 @@ def rollout_from_file():
 
 
 def print_log_dict(usage, loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, \
-					r_other_ub_losses, loss_step_weights):
+                   r_other_ub_losses, loss_step_weights):
 	dt = args.dt
 	s_loss_weights = np.sum(loss_step_weights)
 	dt_s_loss_weights = np.sum(loss_step_weights[-dt:])
 
 	print("%s Loss: %.3f (UB: %.3f), Relational Loss: %.3f (UB: %.3f)" % (usage, loss, ub_loss, r_loss, r_ub_loss))
 
-	print("    other losses: {}".format(", ".join(["%.2f (UB: %.2f)" % 
-																(other_losses[:, i].sum(0) / s_loss_weights,
-																other_ub_losses[:, i].sum(0) / s_loss_weights)
-																for i in range(len(other_losses[0]))])))
+	print("    other losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
+	                                               (other_losses[:, i].sum(0) / s_loss_weights,
+	                                                other_ub_losses[:, i].sum(0) / s_loss_weights)
+	                                               for i in range(len(other_losses[0]))])))
 
 	print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
-																(other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
-																other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
-																for i in range(len(other_losses[0]))])))
+	                                                            (other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
+	                                                             other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
+	                                                            for i in range(len(other_losses[0]))])))
 
 	print("    other relational losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
-																(r_other_losses[:, i].sum(0) / s_loss_weights,
-																	r_other_ub_losses[:, i].sum(0) / s_loss_weights)
-																for i in range(len(r_other_losses[0]))])))
+	                                                          (r_other_losses[:, i].sum(0) / s_loss_weights,
+	                                                           r_other_ub_losses[:, i].sum(0) / s_loss_weights)
+	                                                          for i in range(len(r_other_losses[0]))])))
 
 	print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
-																(r_other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
-																r_other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
-																for i in range(len(r_other_losses[0]))])))
+	                                                            (r_other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
+	                                                             r_other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
+	                                                            for i in range(len(r_other_losses[0]))])))
 
 
 def run_from_file():
@@ -399,13 +401,13 @@ def run_from_file():
 			features = inputs['features']
 
 			# TODO: convert into a log dict
-			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
+			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
 			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
 			                                                                features,
 			                                                                collisions=inputs.get('collisions', None))
 
 			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, \
-				r_other_ub_losses, loss_step_weights)
+			               r_other_ub_losses, loss_step_weights)
 
 
 def run():
@@ -446,21 +448,21 @@ def run():
 			features = train_inputs['features']
 
 			# TODO: convert into a log dict
-			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
+			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
 			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
 			                                                                features,
-			                                                                collisions=train_inputs.get('collisions', None))
-
+			                                                                collisions=train_inputs.get('collisions',
+			                                                                                            None))
 
 			# validation phase
 			features_corrupted_valid = add_noise(valid_inputs['features'], noise_type=args.noise_type)
 			features_valid = valid_inputs['features']
 
-
-			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses,\
+			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
 			r_other_losses, r_other_ub_losses, valid_model = nem_iterations(features_corrupted_valid,
 			                                                                features_valid,
-			                                                                collisions=valid_inputs.get('collisions', None))
+			                                                                collisions=valid_inputs.get('collisions',
+			                                                                                            None))
 
 			if loss < best_valid_loss:
 				best_valid_loss = loss
