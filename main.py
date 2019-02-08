@@ -288,7 +288,8 @@ def rollout_from_file():
 	model = NEM(batch_size=args.batch_size,
 	            k=args.k,
 	            input_size=(64, 64, 1),
-	            hidden_size=args.inner_hidden_size).to(device)
+	            hidden_size=args.inner_hidden_size,
+	            device=device).to(device)
 
 	# a model must be provided in order to rollout from file
 	assert args.saved_model != None and args.saved_model != "", "Please provide a pre-trained model"
@@ -375,7 +376,8 @@ def run_from_file():
 	model = NEM(batch_size=args.batch_size,
 	            k=args.k,
 	            input_size=(64, 64, 1),
-	            hidden_size=args.inner_hidden_size).to(device)
+	            hidden_size=args.inner_hidden_size,
+	            device=device).to(device)
 
 	# a model must be provided in order to run from file
 	assert args.saved_model != None and args.saved_model != "", "Please provide a pre-trained model"
@@ -426,7 +428,8 @@ def run():
 	train_model = NEM(batch_size=args.batch_size,
 	                  k=args.k,
 	                  input_size=(64, 64, 1),
-	                  hidden_size=args.inner_hidden_size).to(device)
+	                  hidden_size=args.inner_hidden_size,
+	                  device=device).to(device)
 
 	if args.saved_model != None and args.saved_model != "":
 		# load trained NEM model if exists

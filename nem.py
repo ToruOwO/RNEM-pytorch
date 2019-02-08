@@ -5,13 +5,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from main import device
 from model import InnerRNN
 
 
 class NEM(nn.Module):
-	def __init__(self, batch_size, k, input_size, hidden_size):
+	def __init__(self, batch_size, k, input_size, hidden_size, device='cpu'):
 		super(NEM, self).__init__()
+		self.device = device
 		self.inner_rnn = InnerRNN(K=k).to(device)
 
 		self.batch_size = batch_size
@@ -37,6 +37,8 @@ class NEM(nn.Module):
 			pred (B, K, W, H, C)
 			gamma (B, K, W, H, 1)
 		"""
+		device = self.device
+
 		batch_size, K = self.batch_size, self.k
 
 		# initialize h, the latent representation of each object
