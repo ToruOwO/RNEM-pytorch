@@ -423,6 +423,7 @@ def run():
 	# training
 	best_valid_loss = np.inf
 	best_valid_epoch = 0
+	loss_step_weights = [1.0] * args.nr_steps
 
 	for epoch in range(1, args.max_epoch + 1):
 		print("Starting epoch {}...".format(epoch))
@@ -463,6 +464,9 @@ def run():
 			                                                                features_valid,
 			                                                                collisions=valid_inputs.get('collisions',
 			                                                                                            None))
+
+			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, \
+			               r_other_ub_losses, loss_step_weights)
 
 			if loss < best_valid_loss:
 				best_valid_loss = loss

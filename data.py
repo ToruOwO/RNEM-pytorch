@@ -59,7 +59,7 @@ class Data(Dataset):
 		H - height
 		C - number of channels
 		"""
-		print("Loading data from file ...")
+		print("Loading data {} from file ...".format(self.attribute))
 		file_path = os.path.join(data_path, self.data_name + '.h5')
 		f = h5py.File(file_path, 'r')
 
