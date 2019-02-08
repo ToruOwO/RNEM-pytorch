@@ -2,6 +2,7 @@ import os
 
 import torch
 import torch.nn as nn
+import torchvision.transforms
 
 
 def create_directory(dir_name):
@@ -20,6 +21,21 @@ def clear_directory(dir_name, recursive=False):
 				os.unlink(fpath)
 		except Exception as e:
 			print(e)
+
+
+def show_image(t, b, k):
+	"""
+	Given an input data Tensor of shape (B, K, W, H, C),
+	convert it into an image and show.
+	"""
+	# print(t.size())
+
+	d = torch.squeeze(t[b][k], dim=0)
+	d = d.permute(2, 1, 0)
+
+	pil = torchvision.transforms.ToPILImage()
+	im = pil(d)
+	im.show()
 
 
 class BCELoss(nn.Module):
