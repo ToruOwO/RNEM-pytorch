@@ -529,7 +529,7 @@ if __name__ == '__main__':
 	parser.add_argument('--inner_hidden_size', type=int, default=250)
 	parser.add_argument('--saved_model', type=str, default='')
 	parser.add_argument('--rollout_steps', type=int, default=10)
-	parser.add_argument('--usage', choices=['train', 'eval', 'rollout'], required=True)
+	parser.add_argument('--usage', '-u', choices=['train', 'eval', 'rollout'], required=True)
 
 	### for testing purpose
 	parser.add_argument('--cpu', default=False, action='store_true')

@@ -4,17 +4,17 @@ A PyTorch implementation of the paper ["Relational Neural Expectation Maximizati
 ### Training
 
 ```bash
-python main.py --usage train [...]
+python main.py [ -u | --usage ] train [...]
 ```
 
 ### Evaluation
 
 ```bash
-python main.py --usage eval [...]
+python main.py [ -u | --usage ] eval [...]
 ```
 
 ### Rollout
 
 ```bash
-python main.py --usage rollout [...]
+python main.py [ -u | --usage ] rollout [...]
 ```
