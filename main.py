@@ -529,10 +529,10 @@ if __name__ == '__main__':
 	parser.add_argument('--inner_hidden_size', type=int, default=250)
 	parser.add_argument('--saved_model', type=str, default='')
 	parser.add_argument('--rollout_steps', type=int, default=10)
-	parser.add_argument('--eval', type=bool, default=False)
+	parser.add_argument('--usage', choices=['train', 'eval', 'rollout'], required=True)
 
 	### for testing purpose
-	parser.add_argument('--cpu', type=bool, default=False)
+	parser.add_argument('--cpu', default=False, action='store_true')
 
 	args = parser.parse_args()
 	print("=== Arguments ===")
@@ -545,7 +545,11 @@ if __name__ == '__main__':
 		use_gpu = torch.cuda.is_available()
 	device = torch.device('cuda' if use_gpu else 'cpu')
 
-	if args.eval:
-		run_from_file()
-	else:
+	if args.usage == 'train':
 		run()
+	elif args.usage == 'eval':
+		run_from_file()
+	elif args.usage == 'rollout':
+		rollout_from_file()
+	else:
+		raise ValueError
