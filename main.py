@@ -14,8 +14,8 @@ from nem import NEM
 from utils import BCELoss, KLDivLoss
 
 # Device configuration
-use_gpu = torch.cuda.is_available()
-device = torch.device('cuda' if use_gpu else 'cpu')
+use_gpu = None
+device = None
 
 args = None
 
@@ -67,8 +67,8 @@ def compute_outer_loss(mu, gamma, target, prior, collision):
 	# use KL divergence as inter loss
 	inter_criterion = KLDivLoss().to(device)
 
-	intra_loss = intra_criterion(mu, target)
-	inter_loss = inter_criterion(prior, mu)
+	intra_loss = intra_criterion(mu, target, use_gpu=use_gpu)
+	inter_loss = inter_criterion(prior, mu, use_gpu=use_gpu)
 
 	batch_size = target.size()[0]
 
@@ -288,7 +288,8 @@ def rollout_from_file():
 	model = NEM(batch_size=args.batch_size,
 	            k=args.k,
 	            input_size=(64, 64, 1),
-	            hidden_size=args.inner_hidden_size).to(device)
+	            hidden_size=args.inner_hidden_size,
+	            device=device).to(device)
 
 	# a model must be provided in order to rollout from file
 	assert args.saved_model != None and args.saved_model != "", "Please provide a pre-trained model"
@@ -311,7 +312,7 @@ def rollout_from_file():
 		                                                           gamma_old=gamma,
 		                                                           h_old=theta,
 		                                                           preds_old=pred,
-                                                                   model=model,
+		                                                           model=model,
 		                                                           collisions=collisions)
 
 		# re-compute gamma if rollout
@@ -337,13 +338,13 @@ def rollout_from_file():
 		preds.append(pred)
 
 
-def print_log_dict(usage, loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, \
+def print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
                    r_other_ub_losses, loss_step_weights):
 	dt = args.dt
 	s_loss_weights = np.sum(loss_step_weights)
 	dt_s_loss_weights = np.sum(loss_step_weights[-dt:])
 
-	print("%s Loss: %.3f (UB: %.3f), Relational Loss: %.3f (UB: %.3f)" % (usage, loss, ub_loss, r_loss, r_ub_loss))
+	print("Loss: %.3f (UB: %.3f), Relational Loss: %.3f (UB: %.3f)" % (loss, ub_loss, r_loss, r_ub_loss))
 
 	print("    other losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
 	                                               (other_losses[:, i].sum(0) / s_loss_weights,
@@ -375,7 +376,8 @@ def run_from_file():
 	model = NEM(batch_size=args.batch_size,
 	            k=args.k,
 	            input_size=(64, 64, 1),
-	            hidden_size=args.inner_hidden_size).to(device)
+	            hidden_size=args.inner_hidden_size,
+	            device=device).to(device)
 
 	# a model must be provided in order to run from file
 	assert args.saved_model != None and args.saved_model != "", "Please provide a pre-trained model"
@@ -405,10 +407,10 @@ def run_from_file():
 			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
 			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
 			                                                                features,
-                                                                            model,
+			                                                                model,
 			                                                                collisions=inputs.get('collisions', None))
 
-			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, \
+			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
 			               r_other_ub_losses, loss_step_weights)
 
 
@@ -426,7 +428,8 @@ def run():
 	train_model = NEM(batch_size=args.batch_size,
 	                  k=args.k,
 	                  input_size=(64, 64, 1),
-	                  hidden_size=args.inner_hidden_size).to(device)
+	                  hidden_size=args.inner_hidden_size,
+	                  device=device).to(device)
 
 	if args.saved_model != None and args.saved_model != "":
 		# load trained NEM model if exists
@@ -466,7 +469,7 @@ def run():
 			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
 			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
 			                                                                features,
-                                                                            train_model,
+			                                                                train_model,
 			                                                                collisions=train_inputs.get('collisions',
 			                                                                                            None))
 
@@ -477,11 +480,11 @@ def run():
 			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
 			r_other_losses, r_other_ub_losses, valid_model = nem_iterations(features_corrupted_valid,
 			                                                                features_valid,
-                                                                            train_model,
+			                                                                train_model,
 			                                                                collisions=valid_inputs.get('collisions',
 			                                                                                            None))
 
-			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, \
+			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
 			               r_other_ub_losses, loss_step_weights)
 
 			if loss < best_valid_loss:
@@ -501,6 +504,11 @@ def run():
 			if np.isnan(loss.detach()):
 				print("Early Stopping because validation loss is nan")
 				break
+
+			# # save on interrupt
+			# print("Training interrupted. Saving model epoch_{}_batch_{}...".format(epoch, b))
+			# torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'E_epoch_{}_batch_{'
+			#                                                                            '}.pth'.format(epoch, b))))
 
 
 if __name__ == '__main__':
@@ -523,10 +531,19 @@ if __name__ == '__main__':
 	parser.add_argument('--rollout_steps', type=int, default=10)
 	parser.add_argument('--eval', type=bool, default=False)
 
+	### for testing purpose
+	parser.add_argument('--cpu', type=bool, default=False)
+
 	args = parser.parse_args()
 	print("=== Arguments ===")
 	print(args)
 	print()
+
+	if args.cpu:
+		use_gpu = False
+	else:
+		use_gpu = torch.cuda.is_available()
+	device = torch.device('cuda' if use_gpu else 'cpu')
 
 	if args.eval:
 		run_from_file()

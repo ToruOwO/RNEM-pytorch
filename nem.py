@@ -7,15 +7,13 @@ import torch.nn as nn
 
 from model import InnerRNN
 
-# Device configuration
-use_gpu = torch.cuda.is_available()
-device = torch.device('cuda' if use_gpu else 'cpu')
-
 
 class NEM(nn.Module):
-	def __init__(self, batch_size, k, input_size, hidden_size):
+	def __init__(self, batch_size, k, input_size, hidden_size, device='cpu'):
 		super(NEM, self).__init__()
-		self.inner_rnn = InnerRNN(K=k).to(device)
+		self.device = device
+		self.inner_rnn = InnerRNN(batch_size=batch_size, k=k, input_size=input_size, hidden_size=hidden_size,
+		                          device=device).to(device)
 
 		self.batch_size = batch_size
 		self.k = k
@@ -30,6 +28,7 @@ class NEM(nn.Module):
 		self.h = nn.Parameter(h)
 		self.pred = nn.Parameter(pred)
 		self.gamma = nn.Parameter(gamma)
+		self.gamma = nn.Parameter(gamma)
 
 	def init_state(self, dtype=torch.float32):
 		"""
@@ -40,6 +39,8 @@ class NEM(nn.Module):
 			pred (B, K, W, H, C)
 			gamma (B, K, W, H, 1)
 		"""
+		device = self.device
+
 		batch_size, K = self.batch_size, self.k
 
 		# initialize h, the latent representation of each object

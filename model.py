@@ -3,10 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# Device configuration
-use_gpu = torch.cuda.is_available()
-device = torch.device('cuda' if use_gpu else 'cpu')
-
 # dict of activation functions
 ACTIVATION_FUNCTIONS = {
 	'sigmoid': F.sigmoid,
@@ -174,24 +170,49 @@ class OutputWrapper(nn.Module):
 
 
 class R_NEM(nn.Module):
-	def __init__(self, K, fc_size=250, last_fc_size=100):
+	def __init__(self, k, fc_size=250, last_fc_size=100, device='cpu'):
 		super(R_NEM, self).__init__()
+
+		self.device = device
 
 		self.fc_size = fc_size
 		self.last_fc_size = last_fc_size
 
-		self.encoder = None
-		self.core = None
-		self.context = None
-		self.attention = None
+		self.encoder = nn.Sequential(
+			nn.Linear(fc_size, fc_size),
+			nn.LayerNorm(fc_size),
+			nn.ReLU()
+		).to(device)
 
-		assert K > 1
-		self.K = K
+		self.core = nn.Sequential(
+			nn.Linear(2 * fc_size, fc_size),
+			nn.LayerNorm(fc_size),
+			nn.ReLU()
+		).to(device)
+
+		self.context = nn.Sequential(
+			nn.Linear(fc_size, fc_size),
+			nn.LayerNorm(fc_size),
+			nn.ReLU()
+		).to(device)
+
+		self.attention = nn.Sequential(
+			nn.Linear(fc_size, last_fc_size),
+			nn.LayerNorm(last_fc_size),
+			nn.Tanh(),
+			nn.Linear(last_fc_size, 1),
+			nn.Sigmoid()
+		).to(device)
+
+		self.out_fc = nn.Linear(fc_size + fc_size + 512, fc_size).to(device)
+
+		assert k > 1
+		self.k = k
 
 	def get_shapes(self, x):
 		bk = x.size()[0]  # batch size * K
 		m = x.size()[1]  # np.prod(input_size.as_list())
-		return bk // self.K, self.K, m
+		return bk // self.k, self.k, m
 
 	def forward(self, x, state):
 		"""
@@ -222,12 +243,6 @@ class R_NEM(nn.Module):
 
 		"""
 		b, k, m = self.get_shapes(x)
-
-		self.encoder = nn.Sequential(
-			nn.Linear(state.size()[-1], self.fc_size),
-			nn.LayerNorm(self.fc_size),
-			nn.ReLU()
-		).to(device)
 
 		# encode theta
 		state1 = self.encoder(state)  # (b*k, h1)
@@ -264,36 +279,15 @@ class R_NEM(nn.Module):
 		concat = torch.cat([fsr, csr], dim=1)  # (b*k*(k-1), 2*h1)
 
 		# core
-		self.core = nn.Sequential(
-			nn.Linear(concat.size()[-1], self.fc_size),
-			nn.LayerNorm(self.fc_size),
-			nn.ReLU()
-		).to(device)
-
 		core_out = self.core(concat)  # (b*k*(k-1), h1)
 
 		# context; obtained from core_out
-		self.context = nn.Sequential(
-			nn.Linear(core_out.size()[-1], self.fc_size),
-			nn.LayerNorm(self.fc_size),
-			nn.ReLU()
-		).to(device)
-
 		context_out = self.context(core_out)  # (b*k*(k-1), h2)
 
 		h2 = self.fc_size
 		contextr = context_out.view(b * k, k - 1, h2)  # (b*k, k-1, h2)
 
 		# attention coefficients; obtained from core_out
-
-		self.attention = nn.Sequential(
-			nn.Linear(core_out.size()[-1], self.last_fc_size),
-			nn.LayerNorm(self.last_fc_size),
-			nn.Tanh(),
-			nn.Linear(self.last_fc_size, 1),
-			nn.Sigmoid()
-		).to(device)
-
 		attention_out = self.attention(core_out)  # (b*k*(k-1), 1)
 
 		# produce effect as sum(context_out * attention_out)
@@ -305,87 +299,73 @@ class R_NEM(nn.Module):
 		total = torch.cat([state1, effect_sum, x], dim=1)  # (b*k, h1+h2+m)
 
 		# produce recurrent update
-		out_fc = nn.Linear(h1 + h2 + m, self.fc_size).to(device)
-		new_state = out_fc(total)  # (b*k, h)
+		new_state = self.out_fc(total)  # (b*k, h)
 
 		return new_state, new_state
 
 
 class EncoderLayer(nn.Module):
-	def __init__(self):
+	def __init__(self, batch_size, k, input_size, device='cpu'):
 		super(EncoderLayer, self).__init__()
-		self.reshape1 = ReshapeWrapper((64, 64, 1), apply_to="x")
-		self.conv1 = None
-		self.conv2 = None
-		self.conv3 = None
-		self.reshape2 = None
-		self.fc1 = None
+		self.device = device
+
+		W, H, C = input_size
+
+		self.reshape1 = ReshapeWrapper(input_size, apply_to="x")
+		self.conv1 = InputWrapper((batch_size * k, W, H, 1), output_size=16).to(device)
+		self.conv2 = InputWrapper((batch_size * k, W // 2, H // 2, 16), output_size=32).to(device)
+		self.conv3 = InputWrapper((batch_size * k, W // 4, H // 4, 32), output_size=64).to(device)
+		self.reshape2 = ReshapeWrapper(-1, apply_to="x")
+		self.fc1 = InputWrapper((batch_size * k, W * H), fc_output_size=512).to(device)
 
 	def forward(self, x, state):
 		# reshape the input to (64, 64, 1)
 		x, state = self.reshape1(x, state)
 
 		# normal convolution
-		self.conv1 = InputWrapper(x.size(), output_size=16).to(device)
 		x, state = self.conv1(x, state)
-
-		self.conv2 = InputWrapper(x.size(), output_size=32).to(device)
 		x, state = self.conv2(x, state)
-
-		self.conv3 = InputWrapper(x.size(), output_size=64).to(device)
 		x, state = self.conv3(x, state)
 
 		# flatten input
-		self.reshape2 = ReshapeWrapper(-1, apply_to="x")
 		x, state = self.reshape2(x, state)
 
 		# linear layer
-		self.fc1 = InputWrapper(x.size(), fc_output_size=512).to(device)
 		x, state = self.fc1(x, state)
 
 		return x, state
 
 
 class DecoderLayer(nn.Module):
-	def __init__(self):
+	def __init__(self, batch_size, k, input_size, hidden_size, device='cpu'):
 		super(DecoderLayer, self).__init__()
-		self.fc1 = None
-		self.fc2 = None
-		self.reshape1 = None
-		self.r_conv1 = None
-		self.r_conv2 = None
-		self.r_conv3 = None
-		self.reshape2 = None
+		W, H, C = input_size
+
+		self.fc1 = OutputWrapper((batch_size * k, hidden_size), fc_output_size=512).to(device)
+		self.fc2 = OutputWrapper((batch_size * k, 512), fc_output_size=W * H).to(device)
+		self.reshape1 = ReshapeWrapper((8, 8, 64), apply_to="x")
+		self.r_conv1 = OutputWrapper((batch_size * k, 8, 8, 64), output_size=32).to(device)
+		self.r_conv2 = OutputWrapper((batch_size * k, 16, 16, 32), output_size=16).to(device)
+		self.r_conv3 = OutputWrapper((batch_size * k, 32, 32, 16), output_size=1, activation="sigmoid",
+		                             layer_norm=False).to(device)
+		self.reshape2 = ReshapeWrapper(-1, apply_to="x")
 
 	def forward(self, x, state):
-		self.fc1 = OutputWrapper(x.size(), fc_output_size=512).to(device)
 		x, state = self.fc1(x, state)
-
-		self.fc2 = OutputWrapper(x.size(), fc_output_size=8 * 8 * 64).to(device)
 		x, state = self.fc2(x, state)
-
-		self.reshape1 = ReshapeWrapper((8, 8, 64), apply_to="x")
 		x, state = self.reshape1(x, state)
-
-		self.r_conv1 = OutputWrapper(x.size(), output_size=32).to(device)
 		x, state = self.r_conv1(x, state)
-
-		self.r_conv2 = OutputWrapper(x.size(), output_size=16).to(device)
 		x, state = self.r_conv2(x, state)
-
-		self.r_conv3 = OutputWrapper(x.size(), output_size=1, activation="sigmoid", layer_norm=False).to(device)
 		x, state = self.r_conv3(x, state)
-
-		self.reshape2 = ReshapeWrapper(-1, apply_to="x")
 		x, state = self.reshape2(x, state)
 
 		return x, state
 
 
 class RecurrentLayer(nn.Module):
-	def __init__(self, K):
+	def __init__(self, k, hidden_size, device='cpu'):
 		super(RecurrentLayer, self).__init__()
-		self.r_nem = R_NEM(K)
+		self.r_nem = R_NEM(k, fc_size=hidden_size, device=device)
 		self.layer_norm = LayerNormWrapper(apply_to="x")
 		self.act1 = ActivationFunctionWrapper("sigmoid", apply_to="state")
 		self.act2 = ActivationFunctionWrapper("sigmoid", apply_to="x")
@@ -400,12 +380,12 @@ class RecurrentLayer(nn.Module):
 
 
 class InnerRNN(nn.Module):
-	def __init__(self, K):
+	def __init__(self, batch_size, k, input_size, hidden_size, device='cpu'):
 		super(InnerRNN, self).__init__()
 
-		self.encoder = EncoderLayer()
-		self.recurrent = RecurrentLayer(K)
-		self.decoder = DecoderLayer()
+		self.encoder = EncoderLayer(batch_size, k, input_size, device=device)
+		self.recurrent = RecurrentLayer(k, hidden_size, device=device)
+		self.decoder = DecoderLayer(batch_size, k, input_size, hidden_size, device=device)
 
 	def forward(self, x, state):
 		x, state = self.encoder(x, state)
