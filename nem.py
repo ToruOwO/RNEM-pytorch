@@ -12,7 +12,8 @@ class NEM(nn.Module):
 	def __init__(self, batch_size, k, input_size, hidden_size, device='cpu'):
 		super(NEM, self).__init__()
 		self.device = device
-		self.inner_rnn = InnerRNN(K=k, device=device).to(device)
+		self.inner_rnn = InnerRNN(batch_size=batch_size, k=k, input_size=input_size, hidden_size=hidden_size,
+		                          device=device).to(device)
 
 		self.batch_size = batch_size
 		self.k = k
@@ -26,6 +27,7 @@ class NEM(nn.Module):
 		h, pred, gamma = self.init_state()
 		self.h = nn.Parameter(h)
 		self.pred = nn.Parameter(pred)
+		self.gamma = nn.Parameter(gamma)
 		self.gamma = nn.Parameter(gamma)
 
 	def init_state(self, dtype=torch.float32):

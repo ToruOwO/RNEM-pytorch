@@ -505,10 +505,10 @@ def run():
 				print("Early Stopping because validation loss is nan")
 				break
 
-				# # save on interrupt
-				# print("Training interrupted. Saving model epoch_{}_batch_{}...".format(epoch, b))
-				# torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'E_epoch_{}_batch_{'
-				#                                                                            '}.pth'.format(epoch, b))))
+			# # save on interrupt
+			# print("Training interrupted. Saving model epoch_{}_batch_{}...".format(epoch, b))
+			# torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'E_epoch_{}_batch_{'
+			#                                                                            '}.pth'.format(epoch, b))))
 
 
 if __name__ == '__main__':
