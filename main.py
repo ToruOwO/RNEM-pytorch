@@ -375,19 +375,18 @@ def rollout_from_file():
 			r_others[-1].append(r_other_losses)
 			r_others_ub[-1].append(r_other_ub_losses)
 
-			if t > 1:
-				losses = torch.mean(torch.stack(losses[-1]))
-				ub_losses = torch.mean(torch.stack(ub_losses[-1]))
-				r_losses = torch.mean(torch.stack(r_losses[-1]))
-				r_ub_losses = torch.mean(torch.stack(r_ub_losses[-1]))
+			log_losses = torch.mean(torch.stack(losses[-1]))
+			log_ub_losses = torch.mean(torch.stack(ub_losses[-1]))
+			log_r_losses = torch.mean(torch.stack(r_losses[-1]))
+			log_r_ub_losses = torch.mean(torch.stack(r_ub_losses[-1]))
 
-				others = np.mean(np.asarray(others), axis=0)
-				others_ub = np.mean(np.asarray(others_ub), axis=0)
-				r_others = np.mean(np.asarray(r_others), axis=0)
-				r_others_ub = np.mean(np.asarray(r_others_ub), axis=0)
+			log_others = np.mean(np.asarray(others), axis=0)
+			log_others_ub = np.mean(np.asarray(others_ub), axis=0)
+			log_r_others = np.mean(np.asarray(r_others), axis=0)
+			log_r_others_ub = np.mean(np.asarray(r_others_ub), axis=0)
 
-				print_log_dict(losses, ub_losses, r_losses, r_ub_losses, others, others_ub, r_others,
-				               r_others_ub, loss_step_weights)
+			print_log_dict(log_losses, log_ub_losses, log_r_losses, log_r_ub_losses, log_others, log_others_ub,
+			               log_r_others, log_r_others_ub, loss_step_weights)
 
 
 def print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
