@@ -275,6 +275,10 @@ def rollout_from_file():
 		                attribute=attribute) for attribute in attribute_list
 	}
 
+	# convert numpy bool array to tensor on GPU
+	for k, v in input_data.items():
+		input_data[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
+
 	# initialize RNN hidden state, prediction and gamma
 	theta = torch.zeros(args.batch_size * args.k, 250)
 	pred = torch.ones(args.batch_size, args.k, 64, 64, 1)  # (B, K, W, H, C)
@@ -312,7 +316,7 @@ def rollout_from_file():
 		                                                           gamma_old=gamma,
 		                                                           h_old=theta,
 		                                                           preds_old=pred,
-		                                                           model=model,
+		                                                           nem_model=model,
 		                                                           collisions=collisions)
 
 		# re-compute gamma if rollout
@@ -415,10 +419,11 @@ def run_from_file():
 
 
 def run():
-	log_dir = args.log_dir
+	for dir in [args.log_dir, args.save_dir]:
+		utils.create_directory(dir)
 
-	utils.create_directory(log_dir)
-	utils.clear_directory(log_dir)
+	# only clear log_dir
+	# utils.clear_directory(args.log_dir)
 
 	# set up input data
 	attribute_list = ('features', 'groups')
@@ -492,14 +497,14 @@ def run():
 				best_valid_epoch = epoch
 				print("Best validation loss improved to %.03f" % best_valid_loss)
 				print("Best valid epoch [{}/{}]".format(best_valid_epoch, args.max_epoch + 1))
-				torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'best.pth')))
+				torch.save(train_model.state_dict(), os.path.abspath(os.path.join(args.save_dir, 'best.pth')))
 				print("===Saved to:", args.save_dir)
 
 			if epoch % args.log_per_iter == 0:
 				print("Epoch [{}/{}], Batch [{}/{}], Loss: {:.4f}".format(epoch, args.max_epoch, b,
 				                                                          Data.get_num_batches(), loss))
 				torch.save(train_model.state_dict(),
-				           os.path.abspath(os.path.join(log_dir, 'epoch_{}_batch_{}.pth'.format(epoch, b))))
+				           os.path.abspath(os.path.join(args.save_dir, 'epoch_{}_batch_{}.pth'.format(epoch, b))))
 
 			if np.isnan(loss.detach()):
 				print("Early Stopping because validation loss is nan")
