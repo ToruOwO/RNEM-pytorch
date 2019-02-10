@@ -123,6 +123,7 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	W, H, C = (x for x in input_shape[-3:])
 	assert (W, H, C) == nem_model.input_size, "Require NEM input size to be (W, H, C)"
 
+	# evaluation mode
 	nem_model.eval()
 
 	# compute Bernoulli prior of pixels
@@ -142,11 +143,11 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 
 	# compute NEM losses
 	total_loss, intra_loss, inter_loss, r_total_loss, r_intra_loss, r_inter_loss \
-		= compute_outer_loss(pred, gamma, target_data[t + 1], prior, collision=collision)
+		= compute_outer_loss(pred, gamma, target_data, prior, collision=collision)
 
 	# compute estimated loss upper bound (which doesn't use E-step)
 	total_ub_loss, intra_ub_loss, inter_ub_loss, r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss \
-		= compute_outer_ub_loss(pred, target_data[t + 1], prior, collision=collision)
+		= compute_outer_ub_loss(pred, target_data, prior, collision=collision)
 
 	other_losses = torch.stack((total_loss, intra_loss, inter_loss))
 	other_ub_losses = torch.stack((total_ub_loss, intra_ub_loss, inter_ub_loss))
@@ -267,27 +268,6 @@ def rollout_from_file():
 	attribute_list = ('features', 'groups')
 	nr_iters = args.nr_steps + args.rollout_steps + 1
 
-	input_data = {
-		attribute: Data(args.data_name,
-		                'test',
-		                batch_id=0,
-		                sequence_length=nr_iters,
-		                attribute=attribute) for attribute in attribute_list
-	}
-
-	# convert numpy bool array to tensor on GPU
-	for k, v in input_data.items():
-		input_data[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
-
-	# initialize RNN hidden state, prediction and gamma
-	theta = torch.zeros(args.batch_size * args.k, 250)
-	pred = torch.ones(args.batch_size, args.k, 64, 64, 1)  # (B, K, W, H, C)
-	gamma = np.abs(np.random.randn(args.batch_size, args.k, 64, 64, 1))  # (B, K, W, H, 1)
-	gamma /= np.sum(gamma, axis=1, keepdims=True)
-	gamma = torch.from_numpy(gamma)
-
-	corrupted, scores, gammas, thetas, preds = [], [], [gamma], [theta], [pred]
-
 	# set up model
 	model = NEM(batch_size=args.batch_size,
 	            k=args.k,
@@ -301,45 +281,113 @@ def rollout_from_file():
 	assert os.path.isfile(saved_model_path), "Path to model does not exist"
 	model.load_state_dict(torch.load(saved_model_path))
 
-	# run rollout steps
-	for t in range(nr_iters - 1):
-		if 'collisions' in input_data:
-			collisions = input_data['collisions'][t]
-		else:
-			collisions = None
+	# create empty lists to record losses
+	losses, ub_losses, r_losses, r_ub_losses, others, others_ub, r_others, r_others_ub = [], [], [], [], [], [], [], []
 
-		corr = add_noise(input_data['features'][t])
+	loss_step_weights = [1.0] * args.nr_steps
 
-		loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
-		r_other_losses, r_other_ub_losses = dynamic_nem_iterations(input_data=corr,
-		                                                           target_data=input_data['features'][t + 1],
-		                                                           gamma_old=gamma,
-		                                                           h_old=theta,
-		                                                           preds_old=pred,
-		                                                           nem_model=model,
-		                                                           collisions=collisions)
+	for b in range(Data.get_num_batches()):
+		input_data = {
+			attribute: Data(args.data_name,
+			                'test',
+			                batch_id=b,
+			                sequence_length=nr_iters,
+			                attribute=attribute) for attribute in attribute_list
+		}
 
-		# re-compute gamma if rollout
-		if t >= args.nr_steps:
-			truth = torch.max(preds, dim=1, keepdims=True)
+		# convert numpy bool array to tensor on GPU
+		for k, v in input_data.items():
+			input_data[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
 
-			# avoid vanishing by scaling or sampling
-			truth[truth > 0.1] = 1.0
-			truth[truth <= 0.1] = 0.0
+		# initialize RNN hidden state, prediction and gamma
+		theta = torch.zeros(args.batch_size * args.k, 250)
+		pred = torch.ones(args.batch_size, args.k, 64, 64, 1)  # (B, K, W, H, C)
+		gamma = np.abs(np.random.randn(args.batch_size, args.k, 64, 64, 1))  # (B, K, W, H, 1)
+		gamma /= np.sum(gamma, axis=1, keepdims=True)
+		gamma = torch.from_numpy(gamma).float()
 
-			# compute probs
-			probs = truth * pred + (1 - truth) * (1 - pred)
+		corrupted, scores, gammas, thetas, preds = [], [], [gamma], [theta], [pred]
 
-			# add epsilon to probs in order to prevent 0 gamma
-			probs += 1e-6
+		# record losses
+		losses.append([])
+		ub_losses.append([])
+		r_losses.append([])
+		r_ub_losses.append([])
+		others.append([])
+		others_ub.append([])
+		r_others.append([])
+		r_others_ub.append([])
 
-			# compute the new gamma (E-step) or set to one for k=1
-			gamma = probs / torch.sum(probs, 1, keepdims=True) if args.k > 1 else torch.ones_like(gamma)
+		# run rollout steps
+		for t in range(nr_iters - 1):
+			if 'collisions' in input_data:
+				collisions = input_data['collisions'][t]
+			else:
+				collisions = None
 
-		corrupted.append(corr)
-		gammas.append(gamma)
-		thetas.append(theta)
-		preds.append(pred)
+			# decide if the model is rolling out or using real data
+			if t < args.nr_steps:
+				# real data
+				input = input_data['features'][t]
+			else:
+				# rollout
+				input = np.sum(gamma * pred, 1, keepdims=True)
+
+			# run forward process
+			input_corrupted = add_noise(input)
+			loss, ub_loss, r_loss, r_ub_loss, theta, pred, gamma, other_losses, other_ub_losses, \
+			r_other_losses, r_other_ub_losses = dynamic_nem_iterations(input_data=input_corrupted,
+			                                                           target_data=input_data['features'][t + 1],
+			                                                           gamma_old=gamma,
+			                                                           h_old=theta,
+			                                                           preds_old=pred,
+			                                                           nem_model=model,
+			                                                           collisions=collisions)
+
+			# re-compute gamma if rollout
+			if t >= args.nr_steps:
+				truth = torch.max(preds, dim=1, keepdims=True)
+
+				# avoid vanishing by scaling or sampling
+				truth[truth > 0.1] = 1.0
+				truth[truth <= 0.1] = 0.0
+
+				# compute probs
+				probs = truth * pred + (1 - truth) * (1 - pred)
+
+				# add epsilon to probs in order to prevent 0 gamma
+				probs += 1e-6
+
+				# compute the new gamma (E-step) or set to one for k=1
+				gamma = probs / torch.sum(probs, 1, keepdims=True) if args.k > 1 else torch.ones_like(gamma)
+
+			corrupted.append(input_corrupted)
+			gammas.append(gamma)
+			thetas.append(theta)
+			preds.append(pred)
+
+			losses[-1].append(loss)
+			ub_losses[-1].append(ub_loss)
+			r_losses[-1].append(r_loss)
+			r_ub_losses[-1].append(r_ub_loss)
+			others[-1].append(other_losses)
+			others_ub[-1].append(other_ub_losses)
+			r_others[-1].append(r_other_losses)
+			r_others_ub[-1].append(r_other_ub_losses)
+
+			if t > 1:
+				losses = torch.mean(torch.stack(losses[-1]))
+				ub_losses = torch.mean(torch.stack(ub_losses[-1]))
+				r_losses = torch.mean(torch.stack(r_losses[-1]))
+				r_ub_losses = torch.mean(torch.stack(r_ub_losses[-1]))
+
+				others = np.mean(np.asarray(others), axis=0)
+				others_ub = np.mean(np.asarray(others_ub), axis=0)
+				r_others = np.mean(np.asarray(r_others), axis=0)
+				r_others_ub = np.mean(np.asarray(r_others_ub), axis=0)
+
+				print_log_dict(losses, ub_losses, r_losses, r_ub_losses, others, others_ub, r_others,
+				               r_others_ub, loss_step_weights)
 
 
 def print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
@@ -510,10 +558,10 @@ def run():
 				print("Early Stopping because validation loss is nan")
 				break
 
-			# # save on interrupt
-			# print("Training interrupted. Saving model epoch_{}_batch_{}...".format(epoch, b))
-			# torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'E_epoch_{}_batch_{'
-			#                                                                            '}.pth'.format(epoch, b))))
+		# # save on interrupt
+		# print("Training interrupted. Saving model epoch_{}_batch_{}...".format(epoch, b))
+		# torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'E_epoch_{}_batch_{'
+		#                                                                            '}.pth'.format(epoch, b))))
 
 
 if __name__ == '__main__':
