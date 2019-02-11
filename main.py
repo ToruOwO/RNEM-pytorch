@@ -20,6 +20,8 @@ device = None
 args = None
 
 
+### helper functions
+
 def add_noise(data, noise_type=None, noise_prob=0.2):
 	"""
 	Add noise to the input image to avoid trivial solutions
@@ -111,6 +113,9 @@ def compute_outer_ub_loss(pred, target, prior, collision):
 	r_total_ub_loss = r_intra_ub_loss + r_inter_ub_loss
 
 	return total_ub_loss, intra_ub_loss, inter_ub_loss, r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss
+
+
+### run epoch iterations
 
 
 def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old, nem_model, collisions=None):
@@ -263,6 +268,41 @@ def nem_iterations(input_data, target_data, nem_model, collisions=None, is_train
 	       other_ub_losses, r_other_losses, r_other_ub_losses, nem_model
 
 
+### log computation results
+
+
+def print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
+                   r_other_ub_losses, loss_step_weights):
+	dt = args.dt
+	s_loss_weights = np.sum(loss_step_weights)
+	dt_s_loss_weights = np.sum(loss_step_weights[-dt:])
+
+	print("Loss: %.3f (UB: %.3f), Relational Loss: %.3f (UB: %.3f)" % (loss, ub_loss, r_loss, r_ub_loss))
+
+	print("    other losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
+	                                               (other_losses[:, i].sum(0) / s_loss_weights,
+	                                                other_ub_losses[:, i].sum(0) / s_loss_weights)
+	                                               for i in range(len(other_losses[0]))])))
+
+	print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
+	                                                            (other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
+	                                                             other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
+	                                                            for i in range(len(other_losses[0]))])))
+
+	print("    other relational losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
+	                                                          (r_other_losses[:, i].sum(0) / s_loss_weights,
+	                                                           r_other_ub_losses[:, i].sum(0) / s_loss_weights)
+	                                                          for i in range(len(r_other_losses[0]))])))
+
+	print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
+	                                                            (r_other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
+	                                                             r_other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
+	                                                            for i in range(len(r_other_losses[0]))])))
+
+
+### Main functions
+
+
 def rollout_from_file():
 	# set up input data
 	attribute_list = ('features', 'groups')
@@ -387,35 +427,6 @@ def rollout_from_file():
 
 			print_log_dict(log_losses, log_ub_losses, log_r_losses, log_r_ub_losses, log_others, log_others_ub,
 			               log_r_others, log_r_others_ub, loss_step_weights)
-
-
-def print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
-                   r_other_ub_losses, loss_step_weights):
-	dt = args.dt
-	s_loss_weights = np.sum(loss_step_weights)
-	dt_s_loss_weights = np.sum(loss_step_weights[-dt:])
-
-	print("Loss: %.3f (UB: %.3f), Relational Loss: %.3f (UB: %.3f)" % (loss, ub_loss, r_loss, r_ub_loss))
-
-	print("    other losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
-	                                               (other_losses[:, i].sum(0) / s_loss_weights,
-	                                                other_ub_losses[:, i].sum(0) / s_loss_weights)
-	                                               for i in range(len(other_losses[0]))])))
-
-	print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
-	                                                            (other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
-	                                                             other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
-	                                                            for i in range(len(other_losses[0]))])))
-
-	print("    other relational losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
-	                                                          (r_other_losses[:, i].sum(0) / s_loss_weights,
-	                                                           r_other_ub_losses[:, i].sum(0) / s_loss_weights)
-	                                                          for i in range(len(r_other_losses[0]))])))
-
-	print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
-	                                                            (r_other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
-	                                                             r_other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
-	                                                            for i in range(len(r_other_losses[0]))])))
 
 
 def run_from_file():
@@ -557,10 +568,10 @@ def run():
 				print("Early Stopping because validation loss is nan")
 				break
 
-		# # save on interrupt
-		# print("Training interrupted. Saving model epoch_{}_batch_{}...".format(epoch, b))
-		# torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'E_epoch_{}_batch_{'
-		#                                                                            '}.pth'.format(epoch, b))))
+	# # save on interrupt
+	# print("Training interrupted. Saving model epoch_{}_batch_{}...".format(epoch, b))
+	# torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'E_epoch_{}_batch_{'
+	#                                                                            '}.pth'.format(epoch, b))))
 
 
 if __name__ == '__main__':
