@@ -383,7 +383,7 @@ def rollout_from_file():
 				input = input_data['features'][t]
 			else:
 				# rollout
-				input = np.sum(gamma * pred, 1, keepdims=True)
+				input = torch.sum(gamma * pred, 1, keepdim=True)
 
 			# run forward process
 			input_corrupted = add_noise(input)
@@ -398,11 +398,15 @@ def rollout_from_file():
 
 			# re-compute gamma if rollout
 			if t >= args.nr_steps:
-				truth = torch.max(preds, dim=1, keepdims=True)
+				truth = torch.max(torch.stack(preds), 1, keepdim=True)
 
 				# avoid vanishing by scaling or sampling
-				truth[truth > 0.1] = 1.0
-				truth[truth <= 0.1] = 0.0
+				ones = torch.ones_like(truth)
+				zeros = torch.zeros_like(truth)
+				truth = torch.where(truth > 0.1, truth, ones)
+				truth = torch.where(truth <= 0.1, truth, zeros)
+				# truth[truth > 0.1] = 1.0
+				# truth[truth <= 0.1] = 0.0
 
 				# compute probs
 				probs = truth * pred + (1 - truth) * (1 - pred)
