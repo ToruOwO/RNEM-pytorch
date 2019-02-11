@@ -300,6 +300,18 @@ def print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_loss
 	                                                            for i in range(len(r_other_losses[0]))])))
 
 
+def create_rollout_plots(name, outputs, idx):
+	import matplotlib.pyplot as plt
+	scores, confidences = len(idx) * [0.0], len(idx) * [0.0]
+
+	# produce overview plot
+	for i, nr in enumerate(idx):
+		fig = utils.overview_plot(i, **outputs)
+		fig.suptitle(name + ', sample {},  AMI Score: {:.3f} ({:.3f}) '.format(nr, scores[i], confidences[i]))
+		fig.savefig(os.path.join(args.log_dir, name + '_{}.png'.format(nr)), bbox_inches='tight', pad_inches=0)
+		plt.close(fig)
+
+
 ### Main functions
 
 
@@ -415,18 +427,30 @@ def rollout_from_file():
 			r_others[-1].append(r_other_losses)
 			r_others_ub[-1].append(r_other_ub_losses)
 
-			log_losses = torch.mean(torch.stack(losses[-1]))
-			log_ub_losses = torch.mean(torch.stack(ub_losses[-1]))
-			log_r_losses = torch.mean(torch.stack(r_losses[-1]))
-			log_r_ub_losses = torch.mean(torch.stack(r_ub_losses[-1]))
+		# collect outputs for graph drawing
+		outputs = {
+			'inputs': input_data['feature'],
+			'corrupted': corrupted,
+			'gammas': gammas,
+			'preds': preds,
+		}
 
-			log_others = np.mean(np.asarray(others), axis=0)
-			log_others_ub = np.mean(np.asarray(others_ub), axis=0)
-			log_r_others = np.mean(np.asarray(r_others), axis=0)
-			log_r_others_ub = np.mean(np.asarray(r_others_ub), axis=0)
+		if b == 0:
+			idx = [0, 1, 2]   # sample ids to generate plots
+			create_rollout_plots('rollout', outputs, idx)
 
-			print_log_dict(log_losses, log_ub_losses, log_r_losses, log_r_ub_losses, log_others, log_others_ub,
-			               log_r_others, log_r_others_ub, loss_step_weights)
+		log_losses = torch.mean(torch.stack(losses[-1]))
+		log_ub_losses = torch.mean(torch.stack(ub_losses[-1]))
+		log_r_losses = torch.mean(torch.stack(r_losses[-1]))
+		log_r_ub_losses = torch.mean(torch.stack(r_ub_losses[-1]))
+
+		log_others = np.mean(np.asarray(others), axis=0)
+		log_others_ub = np.mean(np.asarray(others_ub), axis=0)
+		log_r_others = np.mean(np.asarray(r_others), axis=0)
+		log_r_others_ub = np.mean(np.asarray(r_others_ub), axis=0)
+
+		print_log_dict(log_losses, log_ub_losses, log_r_losses, log_r_ub_losses, log_others, log_others_ub,
+		               log_r_others, log_r_others_ub, loss_step_weights)
 
 
 def run_from_file():

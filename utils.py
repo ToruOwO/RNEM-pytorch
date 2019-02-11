@@ -1,8 +1,14 @@
 import os
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.transforms
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.colors import hsv_to_rgb
 
 
 def create_directory(dir_name):
@@ -21,6 +27,75 @@ def clear_directory(dir_name, recursive=False):
 				os.unlink(fpath)
 		except Exception as e:
 			print(e)
+
+
+def get_gamma_colors(nr_colors):
+	hsv_colors = np.ones((nr_colors, 3))
+	hsv_colors[:, 0] = (np.linspace(0, 1, nr_colors, endpoint=False) + 2 / 3) % 1.0
+	color_conv = hsv_to_rgb(hsv_colors)
+	return color_conv
+
+
+def overview_plot(i, gammas, preds, inputs, corrupted=None, **kwargs):
+	T, B, K, W, H, C = gammas.size()
+	T -= 1  # remove initialization step
+
+	corrupted = corrupted if corrupted is not None else inputs
+	gamma_colors = get_gamma_colors(K)
+
+	# only use data in the dimension of sample i
+	inputs = inputs.numpy()[:, i, 0]
+	gammas = gammas.numpy()[:, i, :, :, :, 0]
+	if preds.size()[1] != B:
+		preds = preds[:, 0]
+	preds = preds.numpy()[:, i]
+	corrupted = corrupted.numpy()[:, i, 0]
+
+	inputs = np.clip(inputs, 0., 1.)
+	preds = np.clip(preds, 0., 1.)
+	corrupted = np.clip(corrupted, 0., 1.)
+
+	def plot_img(ax, data, cmap='Greys_r', xlabel=None, ylabel=None):
+		if data.shape[-1] == 1:
+			ax.matshow(data[:, :, 0], cmap=cmap, vmin=0., vmax=1., interpolation='nearest')
+		else:
+			ax.imshow(data, interpolation='nearest')
+		ax.set_xticks([]);
+		ax.set_yticks([])
+		ax.set_xlabel(xlabel, color='k') if xlabel else None
+		ax.set_ylabel(ylabel, color='k') if ylabel else None
+
+	def plot_gamma(ax, gamma, xlabel=None, ylabel=None):
+		gamma = np.transpose(gamma, [1, 2, 0])
+		gamma = gamma.reshape(-1, gamma.shape[-1]).dot(gamma_colors).reshape(gamma.shape[:-1] + (3,))
+		ax.imshow(gamma, interpolation='nearest')
+		ax.set_xticks([])
+		ax.set_yticks([])
+		ax.set_xlabel(xlabel) if xlabel else None
+		ax.set_ylabel(ylabel) if ylabel else None
+
+	nrows, ncols = (K + 4, T + 1)
+	fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(2 * ncols, 2 * nrows))
+
+	axes[0, 0].set_visible(False)
+	axes[1, 0].set_visible(False)
+	plot_gamma(axes[2, 0], gammas[0], ylabel='Gammas')
+	for k in range(K + 1):
+		axes[k + 3, 0].set_visible(False)
+	for t in range(1, T + 1):
+		g = gammas[t]
+		p = preds[t]
+
+		reconst = np.sum(g[:, :, :, None] * p, axis=0)
+		plot_img(axes[0, t], inputs[t])
+		plot_img(axes[1, t], reconst)
+		plot_gamma(axes[2, t], g)
+		for k in range(K):
+			plot_img(axes[k + 3, t], p[k], ylabel=('mu_{}'.format(k) if t == 1 else None))
+
+		plot_img(axes[K + 3, t], corrupted[t - 1])
+	plt.subplots_adjust(hspace=0.1, wspace=0.1)
+	return fig
 
 
 def show_image(t, b, k):
