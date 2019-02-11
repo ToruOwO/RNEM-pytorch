@@ -37,19 +37,26 @@ def get_gamma_colors(nr_colors):
 
 
 def overview_plot(i, gammas, preds, inputs, corrupted=None, **kwargs):
-	T, B, K, W, H, C = gammas.size()
+	# Note: all inputs are torch tensors and must have been converted to numpy arrays
+
+	T, B, K, W, H, C = gammas.shape
 	T -= 1  # remove initialization step
 
 	corrupted = corrupted if corrupted is not None else inputs
 	gamma_colors = get_gamma_colors(K)
 
 	# only use data in the dimension of sample i
-	inputs = inputs.numpy()[:, i, 0]
-	gammas = gammas.numpy()[:, i, :, :, :, 0]
-	if preds.size()[1] != B:
+	inputs = inputs[:, i, 0]
+	gammas = gammas[:, i, :, :, :, 0]
+	if preds.shape[1] != B:
 		preds = preds[:, 0]
-	preds = preds.numpy()[:, i]
-	corrupted = corrupted.numpy()[:, i, 0]
+	preds = preds[:, i]
+	corrupted = corrupted[:, i, 0]
+
+	inputs = inputs.detach().numpy()
+	gammas = gammas.detach().numpy()
+	preds = preds.detach().numpy()
+	corrupted = corrupted.detach().numpy()
 
 	inputs = np.clip(inputs, 0., 1.)
 	preds = np.clip(preds, 0., 1.)
