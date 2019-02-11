@@ -279,25 +279,25 @@ def print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_loss
 
 	print("Loss: %.3f (UB: %.3f), Relational Loss: %.3f (UB: %.3f)" % (loss, ub_loss, r_loss, r_ub_loss))
 
-	print("    other losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
-	                                               (other_losses[:, i].sum(0) / s_loss_weights,
-	                                                other_ub_losses[:, i].sum(0) / s_loss_weights)
-	                                               for i in range(len(other_losses[0]))])))
-
-	print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
-	                                                            (other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
-	                                                             other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
-	                                                            for i in range(len(other_losses[0]))])))
-
-	print("    other relational losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
-	                                                          (r_other_losses[:, i].sum(0) / s_loss_weights,
-	                                                           r_other_ub_losses[:, i].sum(0) / s_loss_weights)
-	                                                          for i in range(len(r_other_losses[0]))])))
-
-	print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
-	                                                            (r_other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
-	                                                             r_other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
-	                                                            for i in range(len(r_other_losses[0]))])))
+	# print("    other losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
+	#                                                (other_losses[:, i].sum(0) / s_loss_weights,
+	#                                                 other_ub_losses[:, i].sum(0) / s_loss_weights)
+	#                                                for i in range(len(other_losses[0]))])))
+	#
+	# print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
+	#                                                             (other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
+	#                                                              other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
+	#                                                             for i in range(len(other_losses[0]))])))
+	#
+	# print("    other relational losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
+	#                                                           (r_other_losses[:, i].sum(0) / s_loss_weights,
+	#                                                            r_other_ub_losses[:, i].sum(0) / s_loss_weights)
+	#                                                           for i in range(len(r_other_losses[0]))])))
+	#
+	# print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
+	#                                                             (r_other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
+	#                                                              r_other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
+	#                                                             for i in range(len(r_other_losses[0]))])))
 
 
 def create_rollout_plots(name, outputs, idx):
@@ -398,15 +398,14 @@ def rollout_from_file():
 
 			# re-compute gamma if rollout
 			if t >= args.nr_steps:
-				truth = torch.max(torch.stack(preds), 1, keepdim=True)
+				# torch.max returns two values, where the second value is argmax
+				truth, _ = torch.max(pred, 1, keepdim=True)
 
 				# avoid vanishing by scaling or sampling
 				ones = torch.ones_like(truth)
 				zeros = torch.zeros_like(truth)
 				truth = torch.where(truth > 0.1, truth, ones)
 				truth = torch.where(truth <= 0.1, truth, zeros)
-				# truth[truth > 0.1] = 1.0
-				# truth[truth <= 0.1] = 0.0
 
 				# compute probs
 				probs = truth * pred + (1 - truth) * (1 - pred)
@@ -415,7 +414,7 @@ def rollout_from_file():
 				probs += 1e-6
 
 				# compute the new gamma (E-step) or set to one for k=1
-				gamma = probs / torch.sum(probs, 1, keepdims=True) if args.k > 1 else torch.ones_like(gamma)
+				gamma = probs / torch.sum(probs, 1, keepdim=True) if args.k > 1 else torch.ones_like(gamma)
 
 			corrupted.append(input_corrupted)
 			gammas.append(gamma)
@@ -433,10 +432,10 @@ def rollout_from_file():
 
 		# collect outputs for graph drawing
 		outputs = {
-			'inputs': input_data['feature'],
-			'corrupted': corrupted,
-			'gammas': gammas,
-			'preds': preds,
+			'inputs': input_data['features'],
+			'corrupted': torch.stack(corrupted),
+			'gammas': torch.stack(gammas),
+			'preds': torch.stack(preds),
 		}
 
 		if b == 0:
