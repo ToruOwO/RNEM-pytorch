@@ -311,6 +311,8 @@ def create_rollout_plots(name, outputs, idx):
 		fig.savefig(os.path.join(args.log_dir, name + '_{}.png'.format(nr)), bbox_inches='tight', pad_inches=0)
 		plt.close(fig)
 
+		utils.overview_gif('rollout', nr, args.nr_steps, args.rollout_steps, **outputs)
+
 
 ### Main functions
 

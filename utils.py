@@ -9,6 +9,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.colors import hsv_to_rgb
+import matplotlib.animation as animation
 
 
 def create_directory(dir_name):
@@ -67,7 +68,7 @@ def overview_plot(i, gammas, preds, inputs, corrupted=None, **kwargs):
 			ax.matshow(data[:, :, 0], cmap=cmap, vmin=0., vmax=1., interpolation='nearest')
 		else:
 			ax.imshow(data, interpolation='nearest')
-		ax.set_xticks([]);
+		ax.set_xticks([])
 		ax.set_yticks([])
 		ax.set_xlabel(xlabel, color='k') if xlabel else None
 		ax.set_ylabel(ylabel, color='k') if ylabel else None
@@ -103,6 +104,89 @@ def overview_plot(i, gammas, preds, inputs, corrupted=None, **kwargs):
 		plot_img(axes[K + 3, t], corrupted[t - 1])
 	plt.subplots_adjust(hspace=0.1, wspace=0.1)
 	return fig
+
+
+def color_spines(ax, color, lw=2):
+    for sn in ['top', 'bottom', 'left', 'right']:
+        ax.spines[sn].set_linewidth(lw)
+        ax.spines[sn].set_color(color)
+        ax.spines[sn].set_visible(True)
+
+
+def overview_gif(name, i, nr_steps, rollout_steps, gammas, preds, inputs, corrupted=None):
+    T, B, K, W, H, C = gammas.shape
+    T -= 1  # the initialization doesn't count as iteration
+    gamma_colors = get_gamma_colors(K)
+
+    # restrict to sample i and get rid of useless dims
+    inputs = inputs[:, i, 0]
+    gammas = gammas[:, i, :, :, :, 0]
+    if preds.shape[1] != B:
+        preds = preds[:, 0]
+    preds = preds[:, i]
+
+    inputs = inputs.detach().numpy()
+    gammas = gammas.detach().numpy()
+    preds = preds.detach().numpy()
+
+    inputs = np.clip(inputs, 0., 1.)
+    preds = np.clip(preds, 0., 1.)
+
+    def plot_img(ax, data, cmap='Greys_r', xlabel=None, ylabel=None, border_color=None):
+        if data.shape[-1] == 1:
+            ax.matshow(data[:, :, 0], cmap=cmap, vmin=0., vmax=1., interpolation='nearest')
+        else:
+            ax.imshow(data, interpolation='nearest')
+        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_xlabel(xlabel, color=border_color or 'k') if xlabel else None
+        ax.set_ylabel(ylabel, color=border_color or 'k') if ylabel else None
+        if border_color:
+            color_spines(ax, color=border_color)
+
+    def plot_gamma(ax, gamma, xlabel=None, ylabel=None):
+        gamma = np.transpose(gamma, [1, 2, 0])
+        gamma = gamma.reshape(-1, gamma.shape[-1]).dot(gamma_colors).reshape(gamma.shape[:-1] + (3,))
+        ax.imshow(gamma, interpolation='nearest')
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlabel(xlabel) if xlabel else None
+        ax.set_ylabel(ylabel) if ylabel else None
+
+    fig, axes = plt.subplots(nrows=3, figsize=(2, 6))
+    fig.suptitle(name + '_{}'.format(i))
+
+    def update(t):
+        label = 'step {}'.format(t)
+
+        # for t in range(1, T + 1):
+        g = gammas[t+1]
+        p = preds[t+1]
+        reconst = np.sum(g[:, :, :, None] * p, axis=0)
+
+        # blue border if it's still observation
+        # green border otherwise
+        if t < nr_steps:
+            border_color = 'b'
+        else:
+            border_color = 'g'
+
+        plot_img(axes[0], inputs[t], ylabel='GT')
+        plot_img(axes[1], reconst, ylabel='rollout', border_color=border_color)
+        plot_gamma(axes[2], g, xlabel=label, ylabel='grouping')
+
+        # must return a tuple
+        return (axes,)
+
+    # plt.subplots_adjust(hspace=0.2, wspace=0.2)
+
+    anim = animation.FuncAnimation(fig, update, frames=np.arange(nr_steps+rollout_steps), interval=200)
+    plt.show()
+
+    # save using imagemick
+    print("saving rollout overview " + name + '_{}.gif'.format(i))
+    anim.save(name + '_{}.gif'.format(i), writer='imagemagick')
+
+    return fig
 
 
 def show_image(t, b, k):
