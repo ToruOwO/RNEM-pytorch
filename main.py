@@ -277,8 +277,8 @@ def run_epoch(nem_model, optimizer, dataloader, train=True):
 		for i, data in enumerate(dataloader):
 			# per batch
 			features = data[0]['features']
-			groups = data[0]['groups'] if 'groups' in data else None
-			collisions = data[0]['collision'] if 'collisions' in data else None
+			groups = data[0]['groups'] if 'groups' in data[0] else None
+			collisions = data[0]['collision'] if 'collisions' in data[0] else None
 			
 			features = features.to(device)
 			if groups is not None:
@@ -314,8 +314,8 @@ def run_epoch(nem_model, optimizer, dataloader, train=True):
 			for i, data in enumerate(dataloader):
 				# per batch
 				features = data['features']
-				groups = data['groups'] if 'groups' in data else None
-				collisions = data['collision'] if 'collisions' in data else None
+				groups = data['groups'] if 'groups' in data[0] else None
+				collisions = data['collision'] if 'collisions' in data[0] else None
 				if torch.cuda.is_available():
 					features = features.cuda()
 					groups = groups.cuda()
@@ -421,7 +421,6 @@ def create_rollout_plots(name, outputs, idx):
 
 
 def rollout_from_file():
-	# TODO: rewrite
 	# set up input data
 	attribute_list = ('features', 'groups')
 	nr_iters = args.nr_steps + args.rollout_steps + 1
@@ -439,27 +438,21 @@ def rollout_from_file():
 	assert os.path.isfile(saved_model_path), "Path to model does not exist"
 	model.load_state_dict(torch.load(saved_model_path))
 
+	# set up data
+	inputs = Data(args.data_name, "test", args.batch_size, nr_iters, attribute_list)
+	input_dataloader = DataLoader(dataset=inputs, batch_size=1, shuffle=False, num_workers=1, collate_fn=collate)
+
 	# create empty lists to record losses
 	losses, ub_losses, r_losses, r_ub_losses, others, others_ub, r_others, r_others_ub = [], [], [], [], [], [], [], []
 
 	loss_step_weights = [1.0] * args.nr_steps
 
-	for b in range(Data.get_num_batches()):
-		input_data = {
-			attribute: Data(args.data_name,
-			                'test',
-			                batch_id=b,
-			                sequence_length=nr_iters,
-			                attribute=attribute) for attribute in attribute_list
-		}
-
-		# convert numpy bool array to tensor on GPU
-		for k, v in input_data.items():
-			input_data[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
+	for b, data in enumerate(input_dataloader):
+		input_data = data[0]
 
 		# initialize RNN hidden state, prediction and gamma
 		theta = torch.zeros(args.batch_size * args.k, 250)
-		pred = torch.ones(args.batch_size, args.k, 64, 64, 1)  # (B, K, W, H, C)
+		pred = torch.zeros(args.batch_size, args.k, 64, 64, 1)  # (B, K, W, H, C)
 		gamma = np.abs(np.random.randn(args.batch_size, args.k, 64, 64, 1))  # (B, K, W, H, 1)
 		gamma /= np.sum(gamma, axis=1, keepdims=True)
 		gamma = torch.from_numpy(gamma).float()
