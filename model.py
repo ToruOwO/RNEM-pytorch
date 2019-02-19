@@ -390,6 +390,7 @@ class InnerRNN(nn.Module):
 		self.batch_size = batch_size
 		self.k = k
 		self.hidden_size = hidden_size
+		self.device = device
 
 		self.encoder = EncoderLayer(batch_size, k, input_size, device=device)
 		self.recurrent = RecurrentLayer(k, hidden_size, device=device)
@@ -397,10 +398,10 @@ class InnerRNN(nn.Module):
 
 	def init_hidden(self):
 		# variable of size [num_layers*num_directions, b_sz, hidden_sz]
-		if torch.cuda.is_available():
-			return torch.autograd.Variable(torch.zeros(self.batch_size * self.k, self.hidden_size)).cuda()
-		else:
+		if self.device == 'cpu':
 			return torch.autograd.Variable(torch.zeros(self.batch_size * self.k, self.hidden_size))
+		else:
+			return torch.autograd.Variable(torch.zeros(self.batch_size * self.k, self.hidden_size)).cuda()
 
 	def forward(self, x, state):
 		x, state = self.encoder(x, state)
