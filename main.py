@@ -563,10 +563,15 @@ def rollout_from_file():
 
 
 def run_from_file():
-	# TODO: rewrite
+	if use_gpu:
+		torch.set_default_tensor_type('torch.cuda.FloatTensor')
+
 	attribute_list = ('features', 'groups')
 	nr_iters = args.nr_steps + 1
-	loss_step_weights = [1.0] * args.nr_steps
+
+	# set up input data
+	inputs = Data(args.data_name, "test", args.batch_size, nr_iters, attribute_list)
+	inputs_loader = DataLoader(dataset=inputs, batch_size=1, shuffle=False, num_workers=1, collate_fn=collate)
 
 	# set up model
 	model = NEM(batch_size=args.batch_size,
@@ -581,35 +586,27 @@ def run_from_file():
 	assert os.path.isfile(saved_model_path), "Path to model does not exist"
 	model.load_state_dict(torch.load(saved_model_path))
 
+	# set up optimizer
+	optimizer = torch.optim.Adam(list(model.parameters()) + list(model.inner_rnn.parameters()), lr=args.lr)
+
+	# prepare weights for printing out logs
+	loss_step_weights = [1.0] * args.nr_steps
+	s_loss_weights = np.sum(loss_step_weights)
+	dt_s_loss_weights = np.sum(loss_step_weights[-args.dt:])
+
 	for epoch in range(1, args.max_epoch + 1):
-		print("Starting epoch {}...".format(epoch))
+		# produce print-out
+		print("\n" + 50 * "%" + "    EPOCH {}   ".format(epoch) + 50 * "%")
 
-		for b in range(Data.get_num_batches()):
-			inputs = {
-				attribute: Data(args.data_name, 'test', b, sequence_length=nr_iters, attribute=attribute)
-				for attribute in attribute_list
-			}
+		log_dict = run_epoch(model, optimizer, inputs_loader, train=False)
 
-			# convert numpy bool array to tensor on GPU
-			for k, v in inputs.items():
-				inputs[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
-
-			# training phase
-			features_corrupted = add_noise(inputs['features'], noise_type=args.noise_type)
-			features = inputs['features']
-
-			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
-			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
-			                                                                features,
-			                                                                model,
-			                                                                collisions=inputs.get('collisions', None))
-
-			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
-			               r_other_ub_losses, loss_step_weights)
+		log_log_dict('test', log_dict)
+		print("=" * 10, "Eval", "=" * 10)
+		print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights)
 
 
 def run():
-	if torch.cuda.is_available():
+	if use_gpu:
 		torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 	for dir in [args.log_dir, args.save_dir]:
@@ -618,12 +615,12 @@ def run():
 	# only clear log_dir
 	# utils.clear_directory(args.log_dir)
 
-	# set up input data
 	attribute_list = ('features', 'groups')
 	nr_iters = args.nr_steps + 1
 
-	train_inputs = Data(args.data_name, "training", args.batch_size, args.sequence_length, attribute_list)
-	valid_inputs = Data(args.data_name, "validation", args.batch_size, args.sequence_length, attribute_list)
+	# set up input data
+	train_inputs = Data(args.data_name, "training", args.batch_size, nr_iters, attribute_list)
+	valid_inputs = Data(args.data_name, "validation", args.batch_size, nr_iters, attribute_list)
 	train_dataloader = DataLoader(dataset=train_inputs, batch_size=1, shuffle=False, num_workers=1, collate_fn=collate)
 	valid_dataloader = DataLoader(dataset=valid_inputs, batch_size=1, shuffle=False, num_workers=1, collate_fn=collate)
 
@@ -697,7 +694,6 @@ if __name__ == '__main__':
 	parser.add_argument('--save_dir', type=str, default='./trained_model')
 	parser.add_argument('--nr_steps', type=int, default=30)
 	parser.add_argument('--batch_size', type=int, default=64)
-	parser.add_argument('--sequence_length', type=int, default=31)
 	parser.add_argument('--lr', type=float, default=0.001)
 	parser.add_argument('--max_epoch', type=int, default=500)
 	parser.add_argument('--dt', type=int, default=10)
