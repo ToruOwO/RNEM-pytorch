@@ -301,6 +301,10 @@ class R_NEM(nn.Module):
 		# produce recurrent update
 		new_state = self.out_fc(total)  # (b*k, h)
 
+		# delete used variables to save memory space
+		del state1, state1r, state1rr, fs, cs, fsr, csr, concat, core_out, context_out, contextr, attention_out, \
+			attentionr, effect_sum, total
+
 		return new_state, new_state
 
 
@@ -383,9 +387,21 @@ class InnerRNN(nn.Module):
 	def __init__(self, batch_size, k, input_size, hidden_size, device='cpu'):
 		super(InnerRNN, self).__init__()
 
+		self.batch_size = batch_size
+		self.k = k
+		self.hidden_size = hidden_size
+		self.device = device
+
 		self.encoder = EncoderLayer(batch_size, k, input_size, device=device)
 		self.recurrent = RecurrentLayer(k, hidden_size, device=device)
 		self.decoder = DecoderLayer(batch_size, k, input_size, hidden_size, device=device)
+
+	def init_hidden(self):
+		# variable of size [num_layers*num_directions, b_sz, hidden_sz]
+		if self.device == 'cpu':
+			return torch.autograd.Variable(torch.zeros(self.batch_size * self.k, self.hidden_size))
+		else:
+			return torch.autograd.Variable(torch.zeros(self.batch_size * self.k, self.hidden_size)).cuda()
 
 	def forward(self, x, state):
 		x, state = self.encoder(x, state)

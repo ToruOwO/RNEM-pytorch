@@ -1,15 +1,16 @@
-import os
-
 import argparse
+import os
+import time
+
 import numpy as np
 import torch
 import torch.distributions as dist
 import torch.nn as nn
-import torch.optim as optim
 import torch.utils.data
+from torch.utils.data import DataLoader
 
 import utils
-from data import Data
+from data import Data, collate
 from nem import NEM
 from utils import BCELoss, KLDivLoss
 
@@ -164,24 +165,14 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	       other_ub_losses, r_other_losses, r_other_ub_losses
 
 
-def nem_iterations(input_data, target_data, nem_model, collisions=None, is_training=True):
-	# get input dimensions
-	input_shape = input_data.size()
-
-	print("input data is of size", input_shape)
-
-	assert len(input_shape) == 6, "Requires 6D input (T, B, K, W, H, C)"
-	W, H, C = (x for x in input_shape[-3:])
-	assert (W, H, C) == nem_model.input_size, "Require NEM input size to be (W, H, C)"
-
+def nem_iterations(input_data, target_data, nem_model, optimizer, collisions=None, train=True):
 	# compute Bernoulli prior of pixels
 	prior = compute_bernoulli_prior()
 
 	# output
-	hidden_state = (nem_model.h, nem_model.pred, nem_model.gamma)
-
-	# use Adam optimizer
-	optimizer = optim.Adam(list(nem_model.parameters()) + list(nem_model.inner_rnn.parameters()), lr=args.lr)
+	hidden_state = nem_model.init_state(dtype=torch.float32)
+	# hidden_state = (nem_model.h, nem_model.pred, nem_model.gamma)
+	outputs = [hidden_state]
 
 	# record losses
 	total_losses = []
@@ -195,13 +186,6 @@ def nem_iterations(input_data, target_data, nem_model, collisions=None, is_train
 
 	loss_step_weights = [1.0] * args.nr_steps
 
-	outputs = [hidden_state]
-
-	if is_training:
-		nem_model.train()
-	else:
-		nem_model.eval()
-
 	for t, loss_weight in enumerate(loss_step_weights):
 		# model should predict the next frame
 		inputs = (input_data[t], target_data[t + 1])
@@ -212,7 +196,7 @@ def nem_iterations(input_data, target_data, nem_model, collisions=None, is_train
 		# print("inputs", inputs, inputs[0].size(), inputs[1].size())
 
 		# forward pass
-		hidden_state, output = nem_model(inputs, hidden_state)
+		hidden_state, output = nem_model.forward(inputs, hidden_state)
 		theta, pred, gamma = output
 
 		# use collision data
@@ -226,11 +210,11 @@ def nem_iterations(input_data, target_data, nem_model, collisions=None, is_train
 		total_ub_loss, intra_ub_loss, inter_ub_loss, r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss \
 			= compute_outer_ub_loss(pred, target_data[t + 1], prior, collision=collision)
 
-		total_losses.append(total_loss)
-		total_ub_losses.append(total_ub_loss)
+		total_losses.append(loss_weight * total_loss)
+		total_ub_losses.append(loss_weight * total_ub_loss)
 
-		r_total_losses.append(r_total_loss)
-		r_total_ub_losses.append(r_total_ub_loss)
+		r_total_losses.append(loss_weight * r_total_loss)
+		r_total_ub_losses.append(loss_weight * r_total_ub_loss)
 
 		other_losses.append(torch.stack((total_loss, intra_loss, inter_loss)))
 		other_ub_losses.append(torch.stack((total_ub_loss, intra_ub_loss, inter_ub_loss)))
@@ -240,13 +224,17 @@ def nem_iterations(input_data, target_data, nem_model, collisions=None, is_train
 
 		outputs.append(output)  # thetas, preds, gammas
 
+		# delete used variables to save memory space
+		del theta, pred, gamma
+
 		if t % args.step_log_per_iter == 0:
 			print("Step [{}/{}], Loss: {:.4f}".format(t, args.nr_steps, total_loss))
 
-		# backward pass and optimize
-		optimizer.zero_grad()
-		total_loss.backward(retain_graph=True)
-		optimizer.step()
+		if train:
+			# backward pass and optimize
+			optimizer.zero_grad()
+			total_loss.backward(retain_graph=True)
+			optimizer.step()
 
 	# collect outputs
 	thetas, preds, gammas = zip(*outputs)
@@ -268,36 +256,151 @@ def nem_iterations(input_data, target_data, nem_model, collisions=None, is_train
 	       other_ub_losses, r_other_losses, r_other_ub_losses, nem_model
 
 
+def run_epoch(nem_model, optimizer, dataloader, train=True):
+	# adjust mode
+	if train:
+		nem_model.train()
+	else:
+		nem_model.eval()
+
+	losses = []
+	ub_losses = []
+	r_losses = []
+	r_ub_losses = []
+	others = []
+	others_ub = []
+	r_others = []
+	r_others_ub = []
+
+	if train:
+		# run through all data batches
+		for i, data in enumerate(dataloader):
+			# per batch
+			features = data[0]['features']
+			groups = data[0]['groups'] if 'groups' in data[0] else None
+			collisions = data[0]['collision'] if 'collisions' in data[0] else None
+			
+			features = features.to(device)
+			if groups is not None:
+				groups = groups.to(device)
+			if collisions is not None:
+				collisions = collisions.to(device)
+
+			features_corrupted = add_noise(features)
+
+			t1 = time.time()
+			out = nem_iterations(features_corrupted, features, nem_model, optimizer)
+			t2 = time.time() - t1
+			print("time taken for batch", i, "=", t2)
+
+			losses.append(out[0].data.cpu().numpy())
+			ub_losses.append(out[1].data.cpu().numpy())
+
+			# total relational losses (and upperbound)
+			r_losses.append(out[2].data.cpu().numpy())
+			r_ub_losses.append(out[3].data.cpu().numpy())
+
+			# other losses (and upperbound)
+			others.append(out[4].data.cpu().numpy())
+			others_ub.append(out[5].data.cpu().numpy())
+
+			# other relational losses (and upperbound)
+			r_others.append(out[6].data.cpu().numpy())
+			r_others_ub.append(out[7].data.cpu().numpy())
+
+	else:
+		# disable autograd if eval
+		with torch.no_grad():
+			for i, data in enumerate(dataloader):
+				# per batch
+				features = data['features']
+				groups = data['groups'] if 'groups' in data[0] else None
+				collisions = data['collision'] if 'collisions' in data[0] else None
+				if torch.cuda.is_available():
+					features = features.cuda()
+					groups = groups.cuda()
+					collisions = collisions.cuda()
+
+				features_corrupted = add_noise(features)
+
+				t1 = time.time()
+				out = nem_iterations(features_corrupted, features, nem_model, optimizer, train=False)
+				t2 = time.time() - t1
+				print("time taken for epoch", i, "=", t2)
+
+				losses.append(out[0].data.cpu().numpy())
+				ub_losses.append(out[1].data.cpu().numpy())
+
+				# total relational losses (and upperbound)
+				r_losses.append(out[2].data.cpu().numpy())
+				r_ub_losses.append(out[3].data.cpu().numpy())
+
+				# other losses (and upperbound)
+				others.append(out[4].data.cpu().numpy())
+				others_ub.append(out[5].data.cpu().numpy())
+
+				# other relational losses (and upperbound)
+				r_others.append(out[6].data.cpu().numpy())
+				r_others_ub.append(out[7].data.cpu().numpy())
+
+	# build log dict
+	log_dict = {
+		'loss': float(np.mean(losses)),
+		'ub_loss': float(np.mean(ub_losses)),
+		'r_loss': float(np.mean(r_losses)),
+		'r_ub_loss': float(np.mean(r_ub_losses)),
+		'others': np.mean(others, axis=0),
+		'others_ub': np.mean(others_ub, axis=0),
+		'r_others': np.mean(r_others, axis=0),
+		'r_others_ub': np.mean(r_others_ub, axis=0)
+	}
+
+	return log_dict
+
+
 ### log computation results
 
+def log_log_dict(phase, log):
+	# TODO: save log as a file / in DB
+	pass
 
-def print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
-                   r_other_ub_losses, loss_step_weights):
+
+def print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights):
 	dt = args.dt
-	s_loss_weights = np.sum(loss_step_weights)
-	dt_s_loss_weights = np.sum(loss_step_weights[-dt:])
+
+	loss = log_dict['loss']
+	ub_loss = log_dict['ub_loss']
+	r_loss = log_dict['r_loss']
+	r_ub_loss = log_dict['r_ub_loss']
+	other_losses = log_dict['others']
+	other_ub_losses = log_dict['others_ub']
+	r_other_losses = log_dict['r_others']
+	r_other_ub_losses = log_dict['r_others_ub']
 
 	print("Loss: %.3f (UB: %.3f), Relational Loss: %.3f (UB: %.3f)" % (loss, ub_loss, r_loss, r_ub_loss))
 
-	# print("    other losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
-	#                                                (other_losses[:, i].sum(0) / s_loss_weights,
-	#                                                 other_ub_losses[:, i].sum(0) / s_loss_weights)
-	#                                                for i in range(len(other_losses[0]))])))
-	#
-	# print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
-	#                                                             (other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
-	#                                                              other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
-	#                                                             for i in range(len(other_losses[0]))])))
-	#
-	# print("    other relational losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
-	#                                                           (r_other_losses[:, i].sum(0) / s_loss_weights,
-	#                                                            r_other_ub_losses[:, i].sum(0) / s_loss_weights)
-	#                                                           for i in range(len(r_other_losses[0]))])))
-	#
-	# print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
-	#                                                             (r_other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
-	#                                                              r_other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
-	#                                                             for i in range(len(r_other_losses[0]))])))
+	try:
+		print("    other losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
+		                                               (other_losses[:, i].sum(0) / s_loss_weights,
+		                                                other_ub_losses[:, i].sum(0) / s_loss_weights)
+		                                               for i in range(len(other_losses[0]))])))
+
+		print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
+		                                                            (other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
+		                                                             other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
+		                                                            for i in range(len(other_losses[0]))])))
+
+		print("    other relational losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
+		                                                          (r_other_losses[:, i].sum(0) / s_loss_weights,
+		                                                           r_other_ub_losses[:, i].sum(0) / s_loss_weights)
+		                                                          for i in range(len(r_other_losses[0]))])))
+
+		print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
+		                                                            (r_other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
+		                                                             r_other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
+		                                                            for i in range(len(r_other_losses[0]))])))
+	except:
+		pass
 
 
 def create_rollout_plots(name, outputs, idx):
@@ -335,27 +438,21 @@ def rollout_from_file():
 	assert os.path.isfile(saved_model_path), "Path to model does not exist"
 	model.load_state_dict(torch.load(saved_model_path))
 
+	# set up data
+	inputs = Data(args.data_name, "test", args.batch_size, nr_iters, attribute_list)
+	input_dataloader = DataLoader(dataset=inputs, batch_size=1, shuffle=False, num_workers=1, collate_fn=collate)
+
 	# create empty lists to record losses
 	losses, ub_losses, r_losses, r_ub_losses, others, others_ub, r_others, r_others_ub = [], [], [], [], [], [], [], []
 
 	loss_step_weights = [1.0] * args.nr_steps
 
-	for b in range(Data.get_num_batches()):
-		input_data = {
-			attribute: Data(args.data_name,
-			                'test',
-			                batch_id=b,
-			                sequence_length=nr_iters,
-			                attribute=attribute) for attribute in attribute_list
-		}
-
-		# convert numpy bool array to tensor on GPU
-		for k, v in input_data.items():
-			input_data[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
+	for b, data in enumerate(input_dataloader):
+		input_data = data[0]
 
 		# initialize RNN hidden state, prediction and gamma
 		theta = torch.zeros(args.batch_size * args.k, 250)
-		pred = torch.ones(args.batch_size, args.k, 64, 64, 1)  # (B, K, W, H, C)
+		pred = torch.zeros(args.batch_size, args.k, 64, 64, 1)  # (B, K, W, H, C)
 		gamma = np.abs(np.random.randn(args.batch_size, args.k, 64, 64, 1))  # (B, K, W, H, 1)
 		gamma /= np.sum(gamma, axis=1, keepdims=True)
 		gamma = torch.from_numpy(gamma).float()
@@ -441,7 +538,7 @@ def rollout_from_file():
 		}
 
 		if b == 0:
-			idx = [0, 1, 2]   # sample ids to generate plots
+			idx = [0, 1, 2]  # sample ids to generate plots
 			create_rollout_plots('rollout', outputs, idx)
 
 		log_losses = torch.mean(torch.stack(losses[-1]))
@@ -459,9 +556,15 @@ def rollout_from_file():
 
 
 def run_from_file():
+	if use_gpu:
+		torch.set_default_tensor_type('torch.cuda.FloatTensor')
+
 	attribute_list = ('features', 'groups')
 	nr_iters = args.nr_steps + 1
-	loss_step_weights = [1.0] * args.nr_steps
+
+	# set up input data
+	inputs = Data(args.data_name, "test", args.batch_size, nr_iters, attribute_list)
+	inputs_loader = DataLoader(dataset=inputs, batch_size=1, shuffle=False, num_workers=1, collate_fn=collate)
 
 	# set up model
 	model = NEM(batch_size=args.batch_size,
@@ -476,50 +579,52 @@ def run_from_file():
 	assert os.path.isfile(saved_model_path), "Path to model does not exist"
 	model.load_state_dict(torch.load(saved_model_path))
 
-	# TODO: record data using dictionary
+	# set up optimizer
+	optimizer = torch.optim.Adam(list(model.parameters()) + list(model.inner_rnn.parameters()), lr=args.lr)
+
+	# prepare weights for printing out logs
+	loss_step_weights = [1.0] * args.nr_steps
+	s_loss_weights = np.sum(loss_step_weights)
+	dt_s_loss_weights = np.sum(loss_step_weights[-args.dt:])
+
 	for epoch in range(1, args.max_epoch + 1):
-		print("Starting epoch {}...".format(epoch))
+		# produce print-out
+		print("\n" + 50 * "%" + "    EPOCH {}   ".format(epoch) + 50 * "%")
 
-		for b in range(Data.get_num_batches()):
-			inputs = {
-				attribute: Data(args.data_name, 'test', b, sequence_length=nr_iters, attribute=attribute)
-				for attribute in attribute_list
-			}
+		log_dict = run_epoch(model, optimizer, inputs_loader, train=False)
 
-			# convert numpy bool array to tensor on GPU
-			for k, v in inputs.items():
-				inputs[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
-
-			# training phase
-			features_corrupted = add_noise(inputs['features'], noise_type=args.noise_type)
-			features = inputs['features']
-
-			# TODO: convert into a log dict
-			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
-			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
-			                                                                features,
-			                                                                model,
-			                                                                collisions=inputs.get('collisions', None))
-
-			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
-			               r_other_ub_losses, loss_step_weights)
+		log_log_dict('test', log_dict)
+		print("=" * 10, "Eval", "=" * 10)
+		print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights)
 
 
 def run():
+	if use_gpu:
+		torch.set_default_tensor_type('torch.cuda.FloatTensor')
+
 	for dir in [args.log_dir, args.save_dir]:
 		utils.create_directory(dir)
 
 	# only clear log_dir
 	# utils.clear_directory(args.log_dir)
 
-	# set up input data
 	attribute_list = ('features', 'groups')
 	nr_iters = args.nr_steps + 1
+
+	# set up input data
+	train_inputs = Data(args.data_name, "training", args.batch_size, nr_iters, attribute_list)
+	valid_inputs = Data(args.data_name, "validation", args.batch_size, nr_iters, attribute_list)
+	train_dataloader = DataLoader(dataset=train_inputs, batch_size=1, shuffle=False, num_workers=1, collate_fn=collate)
+	valid_dataloader = DataLoader(dataset=valid_inputs, batch_size=1, shuffle=False, num_workers=1, collate_fn=collate)
+
+	# get dimensions of data
+	input_shape = train_inputs.data["features"].shape
+	W, H, C = list(input_shape)[-3:]
 
 	# set up model
 	train_model = NEM(batch_size=args.batch_size,
 	                  k=args.k,
-	                  input_size=(64, 64, 1),
+	                  input_size=(W, H, C),
 	                  hidden_size=args.inner_hidden_size,
 	                  device=device).to(device)
 
@@ -529,78 +634,50 @@ def run():
 		assert os.path.isfile(saved_model_path), "Path to model does not exist"
 		train_model.load_state_dict(torch.load(saved_model_path))
 
+	# set up optimizer
+	optimizer = torch.optim.Adam(list(train_model.parameters()) + list(train_model.inner_rnn.parameters()), lr=args.lr)
+
 	# training
 	best_valid_loss = np.inf
-	best_valid_epoch = 0
+
+	# prepare weights for printing out logs
 	loss_step_weights = [1.0] * args.nr_steps
+	s_loss_weights = np.sum(loss_step_weights)
+	dt_s_loss_weights = np.sum(loss_step_weights[-args.dt:])
 
 	for epoch in range(1, args.max_epoch + 1):
-		print("Starting epoch {}...".format(epoch))
+		# produce print-out
+		print("\n" + 50 * "%" + "    EPOCH {}   ".format(epoch) + 50 * "%")
 
-		for b in range(Data.get_num_batches()):
-			train_inputs = {
-				attribute: Data(args.data_name, 'training', b, sequence_length=nr_iters, attribute=attribute)
-				for attribute in attribute_list
-			}
-			valid_inputs = {
-				attribute: Data(args.data_name, 'validation', b, sequence_length=nr_iters, attribute=attribute)
-				for attribute in attribute_list
-			}
+		# run train epoch
+		log_dict = run_epoch(train_model, optimizer, train_dataloader, train=True)
 
-			# convert numpy bool array to tensor on GPU
-			for k, v in train_inputs.items():
-				train_inputs[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
-			for k, v in valid_inputs.items():
-				valid_inputs[k] = torch.from_numpy(v.data.astype(float)).float().to(device)
+		log_log_dict('training', log_dict)
+		print("=" * 10, "Train", "=" * 10)
+		print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights)
 
-			# training phase
-			features_corrupted = add_noise(train_inputs['features'], noise_type=args.noise_type)
-			features = train_inputs['features']
+		# run eval epoch
+		log_dict = run_epoch(train_model, optimizer, valid_dataloader, train=False)
 
-			# TODO: convert into a log dict
-			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
-			r_other_losses, r_other_ub_losses, train_model = nem_iterations(features_corrupted,
-			                                                                features,
-			                                                                train_model,
-			                                                                collisions=train_inputs.get('collisions',
-			                                                                                            None))
+		log_log_dict('validation', log_dict)
+		print("=" * 10, "Eval", "=" * 10)
+		print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights)
 
-			# validation phase
-			features_corrupted_valid = add_noise(valid_inputs['features'], noise_type=args.noise_type)
-			features_valid = valid_inputs['features']
+		if log_dict['loss'] < best_valid_loss:
+			best_valid_loss = log_dict['loss']
+			print("Best validation loss improved to %.03f" % best_valid_loss)
+			print("Best valid epoch [{}/{}]".format(epoch, args.max_epoch + 1))
+			torch.save(train_model.state_dict(), os.path.abspath(os.path.join(args.save_dir, 'best.pth')))
+			print("=== Saved to:", args.save_dir)
 
-			loss, ub_loss, r_loss, r_ub_loss, thetas, preds, gammas, other_losses, other_ub_losses, \
-			r_other_losses, r_other_ub_losses, valid_model = nem_iterations(features_corrupted_valid,
-			                                                                features_valid,
-			                                                                train_model,
-			                                                                collisions=valid_inputs.get('collisions',
-			                                                                                            None))
+		if epoch % args.log_per_iter == 0:
+			print("Epoch [{}/{}], Loss: {:.4f}".format(epoch, args.max_epoch, log_dict['loss']))
+			torch.save(train_model.state_dict(),
+			           os.path.abspath(os.path.join(args.save_dir, 'epoch_{}.pth'.format(epoch))))
 
-			print_log_dict(loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses,
-			               r_other_ub_losses, loss_step_weights)
-
-			if loss < best_valid_loss:
-				best_valid_loss = loss
-				best_valid_epoch = epoch
-				print("Best validation loss improved to %.03f" % best_valid_loss)
-				print("Best valid epoch [{}/{}]".format(best_valid_epoch, args.max_epoch + 1))
-				torch.save(train_model.state_dict(), os.path.abspath(os.path.join(args.save_dir, 'best.pth')))
-				print("===Saved to:", args.save_dir)
-
-			if epoch % args.log_per_iter == 0:
-				print("Epoch [{}/{}], Batch [{}/{}], Loss: {:.4f}".format(epoch, args.max_epoch, b,
-				                                                          Data.get_num_batches(), loss))
-				torch.save(train_model.state_dict(),
-				           os.path.abspath(os.path.join(args.save_dir, 'epoch_{}_batch_{}.pth'.format(epoch, b))))
-
-			if np.isnan(loss.detach()):
-				print("Early Stopping because validation loss is nan")
-				break
-
-	# # save on interrupt
-	# print("Training interrupted. Saving model epoch_{}_batch_{}...".format(epoch, b))
-	# torch.save(train_model.state_dict(), os.path.abspath(os.path.join(log_dir, 'E_epoch_{}_batch_{'
-	#                                                                            '}.pth'.format(epoch, b))))
+		if np.isnan(log_dict['loss']):
+			print("Early Stopping because validation loss is nan")
+			break
 
 
 if __name__ == '__main__':
@@ -617,7 +694,6 @@ if __name__ == '__main__':
 	parser.add_argument('--log_per_iter', type=int, default=1)
 	parser.add_argument('--step_log_per_iter', type=int, default=10)
 	parser.add_argument('--k', type=int, default=5)
-	parser.add_argument('--data_batch_size', type=int, default=10)
 	parser.add_argument('--inner_hidden_size', type=int, default=250)
 	parser.add_argument('--saved_model', type=str, default='')
 	parser.add_argument('--rollout_steps', type=int, default=10)

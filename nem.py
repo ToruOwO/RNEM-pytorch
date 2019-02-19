@@ -24,11 +24,7 @@ class NEM(nn.Module):
 		self.input_size = input_size  # (W, H, C)
 		self.gamma_size = gamma_size  # (W, H, 1)
 
-		h, pred, gamma = self.init_state()
-		self.h = nn.Parameter(h)
-		self.pred = nn.Parameter(pred)
-		self.gamma = nn.Parameter(gamma)
-		self.gamma = nn.Parameter(gamma)
+		self.pred_init = 0.0
 
 	def init_state(self, dtype=torch.float32):
 		"""
@@ -44,10 +40,10 @@ class NEM(nn.Module):
 		batch_size, K = self.batch_size, self.k
 
 		# initialize h, the latent representation of each object
-		h = torch.zeros(batch_size * K, self.hidden_size, dtype=dtype)
+		h = self.inner_rnn.init_hidden() * self.pred_init
 
 		# initialize pred, the (predicted) true assignment of pixels to objects
-		pred = torch.zeros(batch_size, K, *self.input_size, dtype=dtype)
+		pred = torch.ones(batch_size, K, *self.input_size, dtype=dtype) * self.pred_init
 
 		# initialize gamma, a weight given to pred, with Gaussian distribution
 		gamma_shape = [batch_size, K] + list(self.gamma_size)
