@@ -264,7 +264,7 @@ class R_NEM(nn.Module):
 			csu = []
 			for i in range(k):
 				selector = [j for j in range(k) if j != i]
-				c = list(np.take(state1rl, selector))  # list of length k-1 of (b, h1)
+				c = list(torch.take(state1rl, selector))  # list of length k-1 of (b, h1)
 				c = torch.stack(c, dim=1)
 				csu.append(c)
 
