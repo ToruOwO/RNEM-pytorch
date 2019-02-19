@@ -276,10 +276,12 @@ def run_epoch(nem_model, optimizer, dataloader, train=True):
 			features = data[0]['features']
 			groups = data[0]['groups'] if 'groups' in data else None
 			collisions = data[0]['collision'] if 'collisions' in data else None
-			if torch.cuda.is_available():
-				features = features.cuda()
-				groups = groups.cuda()
-				collisions = collisions.cuda()
+			
+			features = features.to(device)
+			if groups is not None:
+				groups = groups.to(device)
+			if collisions is not None:
+				collisions = collisions.to(device)
 
 			features_corrupted = add_noise(features)
 
