@@ -73,9 +73,6 @@ class Data(Dataset):
 		# number of batches
 		return self.limit // self.batch_size
 
-	def get_num_batches(self):
-		return self.limit // self.batch_size
-
 
 def collate(batch):
 	return batch
