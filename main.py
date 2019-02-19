@@ -224,6 +224,9 @@ def nem_iterations(input_data, target_data, nem_model, optimizer, collisions=Non
 
 		outputs.append(output)  # thetas, preds, gammas
 
+		# delete used variables to save memory space
+		del theta, pred, gamma
+
 		if t % args.step_log_per_iter == 0:
 			print("Step [{}/{}], Loss: {:.4f}".format(t, args.nr_steps, total_loss))
 
@@ -288,7 +291,7 @@ def run_epoch(nem_model, optimizer, dataloader, train=True):
 			t1 = time.time()
 			out = nem_iterations(features_corrupted, features, nem_model, optimizer)
 			t2 = time.time() - t1
-			print("time taken for epoch", i, "=", t2)
+			print("time taken for batch", i, "=", t2)
 
 			losses.append(out[0].data.cpu().numpy())
 			ub_losses.append(out[1].data.cpu().numpy())
@@ -376,25 +379,28 @@ def print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights):
 
 	print("Loss: %.3f (UB: %.3f), Relational Loss: %.3f (UB: %.3f)" % (loss, ub_loss, r_loss, r_ub_loss))
 
-	print("    other losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
-	                                               (other_losses[:, i].sum(0) / s_loss_weights,
-	                                                other_ub_losses[:, i].sum(0) / s_loss_weights)
-	                                               for i in range(len(other_losses[0]))])))
+	try:
+		print("    other losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
+		                                               (other_losses[:, i].sum(0) / s_loss_weights,
+		                                                other_ub_losses[:, i].sum(0) / s_loss_weights)
+		                                               for i in range(len(other_losses[0]))])))
 
-	print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
-	                                                            (other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
-	                                                             other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
-	                                                            for i in range(len(other_losses[0]))])))
+		print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
+		                                                            (other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
+		                                                             other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
+		                                                            for i in range(len(other_losses[0]))])))
 
-	print("    other relational losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
-	                                                          (r_other_losses[:, i].sum(0) / s_loss_weights,
-	                                                           r_other_ub_losses[:, i].sum(0) / s_loss_weights)
-	                                                          for i in range(len(r_other_losses[0]))])))
+		print("    other relational losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
+		                                                          (r_other_losses[:, i].sum(0) / s_loss_weights,
+		                                                           r_other_ub_losses[:, i].sum(0) / s_loss_weights)
+		                                                          for i in range(len(r_other_losses[0]))])))
 
-	print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
-	                                                            (r_other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
-	                                                             r_other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
-	                                                            for i in range(len(r_other_losses[0]))])))
+		print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
+		                                                            (r_other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
+		                                                             r_other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
+		                                                            for i in range(len(r_other_losses[0]))])))
+	except:
+		pass
 
 
 def create_rollout_plots(name, outputs, idx):
@@ -651,7 +657,7 @@ def run():
 
 	for epoch in range(1, args.max_epoch + 1):
 		# produce print-out
-		print("\n" + 80 * "%" + "    EPOCH {}   ".format(epoch) + 80 * "%")
+		print("\n" + 50 * "%" + "    EPOCH {}   ".format(epoch) + 50 * "%")
 
 		# run train epoch
 		log_dict = run_epoch(train_model, optimizer, train_dataloader, train=True)
@@ -691,7 +697,7 @@ if __name__ == '__main__':
 	parser.add_argument('--save_dir', type=str, default='./trained_model')
 	parser.add_argument('--nr_steps', type=int, default=30)
 	parser.add_argument('--batch_size', type=int, default=64)
-	parser.add_argument('--sequence_length', type=int, default=51)
+	parser.add_argument('--sequence_length', type=int, default=31)
 	parser.add_argument('--lr', type=float, default=0.001)
 	parser.add_argument('--max_epoch', type=int, default=500)
 	parser.add_argument('--dt', type=int, default=10)

@@ -301,6 +301,10 @@ class R_NEM(nn.Module):
 		# produce recurrent update
 		new_state = self.out_fc(total)  # (b*k, h)
 
+		# delete used variables to save memory space
+		del state1, state1r, state1rr, fs, cs, fsr, csr, concat, core_out, context_out, contextr, attention_out, \
+			attentionr, effect_sum, total
+
 		return new_state, new_state
 
 
