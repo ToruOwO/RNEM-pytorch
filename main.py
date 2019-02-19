@@ -646,43 +646,37 @@ def run():
 	dt_s_loss_weights = np.sum(loss_step_weights[-args.dt:])
 
 	for epoch in range(1, args.max_epoch + 1):
-		try:
-			# produce print-out
-			print("\n" + 50 * "%" + "    EPOCH {}   ".format(epoch) + 50 * "%")
+		# produce print-out
+		print("\n" + 50 * "%" + "    EPOCH {}   ".format(epoch) + 50 * "%")
 
-			# run train epoch
-			log_dict = run_epoch(train_model, optimizer, train_dataloader, train=True)
+		# run train epoch
+		log_dict = run_epoch(train_model, optimizer, train_dataloader, train=True)
 
-			log_log_dict('training', log_dict)
-			print("=" * 10, "Train", "=" * 10)
-			print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights)
+		log_log_dict('training', log_dict)
+		print("=" * 10, "Train", "=" * 10)
+		print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights)
 
-			# run eval epoch
-			log_dict = run_epoch(train_model, optimizer, valid_dataloader, train=False)
+		# run eval epoch
+		log_dict = run_epoch(train_model, optimizer, valid_dataloader, train=False)
 
-			log_log_dict('validation', log_dict)
-			print("=" * 10, "Eval", "=" * 10)
-			print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights)
+		log_log_dict('validation', log_dict)
+		print("=" * 10, "Eval", "=" * 10)
+		print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights)
 
-			if log_dict['loss'] < best_valid_loss:
-				best_valid_loss = log_dict['loss']
-				print("Best validation loss improved to %.03f" % best_valid_loss)
-				print("Best valid epoch [{}/{}]".format(epoch, args.max_epoch + 1))
-				torch.save(train_model.state_dict(), os.path.abspath(os.path.join(args.save_dir, 'best.pth')))
-				print("=== Saved to:", args.save_dir)
+		if log_dict['loss'] < best_valid_loss:
+			best_valid_loss = log_dict['loss']
+			print("Best validation loss improved to %.03f" % best_valid_loss)
+			print("Best valid epoch [{}/{}]".format(epoch, args.max_epoch + 1))
+			torch.save(train_model.state_dict(), os.path.abspath(os.path.join(args.save_dir, 'best.pth')))
+			print("=== Saved to:", args.save_dir)
 
-			if epoch % args.log_per_iter == 0:
-				print("Epoch [{}/{}], Loss: {:.4f}".format(epoch, args.max_epoch, log_dict['loss']))
-				torch.save(train_model.state_dict(),
-				           os.path.abspath(os.path.join(args.save_dir, 'epoch_{}.pth'.format(epoch))))
-
-			if np.isnan(log_dict['loss']):
-				print("Early Stopping because validation loss is nan")
-				break
-		except:
-			print("Unexpected interrupt; saving model")
+		if epoch % args.log_per_iter == 0:
+			print("Epoch [{}/{}], Loss: {:.4f}".format(epoch, args.max_epoch, log_dict['loss']))
 			torch.save(train_model.state_dict(),
-			           os.path.abspath(os.path.join(args.log_dir, 'epoch_{}_interrupted.pth'.format(epoch))))
+			           os.path.abspath(os.path.join(args.save_dir, 'epoch_{}.pth'.format(epoch))))
+
+		if np.isnan(log_dict['loss']):
+			print("Early Stopping because validation loss is nan")
 			break
 
 
