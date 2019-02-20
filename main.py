@@ -313,13 +313,16 @@ def run_epoch(nem_model, optimizer, dataloader, train=True):
 		with torch.no_grad():
 			for i, data in enumerate(dataloader):
 				# per batch
-				features = data['features']
-				groups = data['groups'] if 'groups' in data[0] else None
-				collisions = data['collision'] if 'collisions' in data[0] else None
-				if torch.cuda.is_available():
-					features = features.cuda()
-					groups = groups.cuda()
-					collisions = collisions.cuda()
+				# per batch
+				features = data[0]['features']
+				groups = data[0]['groups'] if 'groups' in data[0] else None
+				collisions = data[0]['collision'] if 'collisions' in data[0] else None
+
+				features = features.to(device)
+				if groups is not None:
+					groups = groups.to(device)
+				if collisions is not None:
+					collisions = collisions.to(device)
 
 				features_corrupted = add_noise(features)
 
@@ -360,9 +363,11 @@ def run_epoch(nem_model, optimizer, dataloader, train=True):
 
 ### log computation results
 
-def log_log_dict(phase, log):
-	# TODO: save log as a file / in DB
-	pass
+def log_log_dict(phase, log_dict):
+	fp = os.path.abspath(os.path.join(args.log_dir, 'log_{}'.format(phase)))
+	with open(fp, "a") as f:
+		for k, v in log_dict.items():
+			f.write("{}: {}\n".format(k, v))
 
 
 def print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights):

@@ -258,13 +258,14 @@ class R_NEM(nn.Module):
 		fs = state1rr.repeat(1, 1, k - 1, 1)  # (b, k, k-1, h1)
 
 		# create context
-		state1rl = torch.unbind(state1r, dim=1)  # list of length k of (b, h1)
+		state1rl = torch.unbind(state1r, dim=1)  # tuple of length k of (b, h1)
 
 		if k > 1:
 			csu = []
 			for i in range(k):
-				selector = [j for j in range(k) if j != i]
-				c = list(np.take(state1rl, selector))  # list of length k-1 of (b, h1)
+				# selector = [j for j in range(k) if j != i]
+				# c = list(torch.take(torch.Tensor(state1rl), selector))  # list of length k-1 of (b, h1)
+				c = [state1rl[j] for j in range(k) if j != i]
 				c = torch.stack(c, dim=1)
 				csu.append(c)
 
@@ -398,7 +399,7 @@ class InnerRNN(nn.Module):
 
 	def init_hidden(self):
 		# variable of size [num_layers*num_directions, b_sz, hidden_sz]
-		if self.device == 'cpu':
+		if self.device.type == 'cpu':
 			return torch.autograd.Variable(torch.zeros(self.batch_size * self.k, self.hidden_size))
 		else:
 			return torch.autograd.Variable(torch.zeros(self.batch_size * self.k, self.hidden_size)).cuda()
