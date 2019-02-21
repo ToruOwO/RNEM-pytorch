@@ -158,17 +158,21 @@ def overview_gif(name, i, nr_steps, rollout_steps, gammas, preds, inputs, corrup
     def update(t):
         label = 'step {}'.format(t)
 
-        # for t in range(1, T + 1):
-        g = gammas[t+1]
-        p = preds[t+1]
-        reconst = np.sum(g[:, :, :, None] * p, axis=0)
+        g = gammas[t + 1]
+        p = preds[t + 1]
 
         # blue border if it's still observation
         # green border otherwise
         if t < nr_steps:
             border_color = 'b'
+
+            # ground truth
+            reconst = inputs[t]
         else:
             border_color = 'g'
+
+            # rollout
+            reconst = np.sum(g[:, :, :, None] * p, axis=0)
 
         plot_img(axes[0], inputs[t], ylabel='GT')
         plot_img(axes[1], reconst, ylabel='rollout', border_color=border_color)

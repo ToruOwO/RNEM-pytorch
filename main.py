@@ -451,13 +451,15 @@ def rollout_from_file():
 	losses, ub_losses, r_losses, r_ub_losses, others, others_ub, r_others, r_others_ub = [], [], [], [], [], [], [], []
 
 	loss_step_weights = [1.0] * args.nr_steps
+	s_loss_weights = np.sum(loss_step_weights)
+	dt_s_loss_weights = np.sum(loss_step_weights[-args.dt:])
 
 	for b, data in enumerate(input_dataloader):
 		input_data = data[0]
 
 		# initialize RNN hidden state, prediction and gamma
 		theta = torch.zeros(args.batch_size * args.k, 250)
-		pred = torch.zeros(args.batch_size, args.k, 64, 64, 1)  # (B, K, W, H, C)
+		pred = torch.ones(args.batch_size, args.k, 64, 64, 1)  # (B, K, W, H, C)
 		gamma = np.abs(np.random.randn(args.batch_size, args.k, 64, 64, 1))  # (B, K, W, H, 1)
 		gamma /= np.sum(gamma, axis=1, keepdims=True)
 		gamma = torch.from_numpy(gamma).float()
@@ -491,6 +493,7 @@ def rollout_from_file():
 
 			# run forward process
 			input_corrupted = add_noise(input)
+
 			loss, ub_loss, r_loss, r_ub_loss, theta, pred, gamma, other_losses, other_ub_losses, \
 			r_other_losses, r_other_ub_losses = dynamic_nem_iterations(input_data=input_corrupted,
 			                                                           target_data=input_data['features'][t + 1],
@@ -546,18 +549,21 @@ def rollout_from_file():
 			idx = [0, 1, 2]  # sample ids to generate plots
 			create_rollout_plots('rollout', outputs, idx)
 
-		log_losses = torch.mean(torch.stack(losses[-1]))
-		log_ub_losses = torch.mean(torch.stack(ub_losses[-1]))
-		log_r_losses = torch.mean(torch.stack(r_losses[-1]))
-		log_r_ub_losses = torch.mean(torch.stack(r_ub_losses[-1]))
+	# build log dict
+	log_dict = {
+		'loss': torch.mean(torch.stack(losses[-1])),
+		'ub_loss': torch.mean(torch.stack(ub_losses[-1])),
+		'r_loss': torch.mean(torch.stack(r_losses[-1])),
+		'r_ub_loss': torch.mean(torch.stack(r_ub_losses[-1])),
+		'others': np.mean(np.asarray(others), axis=0),
+		'others_ub': np.mean(np.asarray(others_ub), axis=0),
+		'r_others': np.mean(np.asarray(r_others), axis=0),
+		'r_others_ub': np.mean(np.asarray(r_others_ub), axis=0)
+	}
 
-		log_others = np.mean(np.asarray(others), axis=0)
-		log_others_ub = np.mean(np.asarray(others_ub), axis=0)
-		log_r_others = np.mean(np.asarray(r_others), axis=0)
-		log_r_others_ub = np.mean(np.asarray(r_others_ub), axis=0)
+	log_log_dict('rollout', log_dict)
 
-		print_log_dict(log_losses, log_ub_losses, log_r_losses, log_r_ub_losses, log_others, log_others_ub,
-		               log_r_others, log_r_others_ub, loss_step_weights)
+	print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights)
 
 
 def run_from_file():
