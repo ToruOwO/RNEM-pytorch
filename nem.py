@@ -94,7 +94,7 @@ class NEM(nn.Module):
 		M = torch.tensor(self.input_size).prod()
 		reshaped_masked_deltas = masked_deltas.view(batch_size * K, M)
 
-		preds, h_new = self.inner_rnn(reshaped_masked_deltas, h_old)
+		preds, h_new = self.inner_rnn.forward(reshaped_masked_deltas, h_old)
 
 		return preds.view(d_size), h_new
 
