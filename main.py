@@ -76,12 +76,12 @@ def compute_outer_loss(mu, gamma, target, prior, collision):
 	batch_size = target.size()[0]
 
 	# compute rel losses
-	r_intra_loss = torch.sum(collision * intra_loss * gamma.detach()) / batch_size
-	r_inter_loss = torch.sum(collision * inter_loss * (1. - gamma.detach())) / batch_size
+	r_intra_loss = torch.div(torch.sum(collision * intra_loss * gamma.detach()), batch_size)
+	r_inter_loss = torch.div(torch.sum(collision * inter_loss * (1. - gamma.detach())), batch_size)
 
 	# compute normal losses
-	intra_loss = torch.sum(intra_loss * gamma.detach()) / batch_size
-	inter_loss = torch.sum(inter_loss * (1.0 - gamma.detach())) / batch_size
+	intra_loss = torch.div(torch.sum(intra_loss * gamma.detach()), batch_size)
+	inter_loss = torch.div(torch.sum(inter_loss * (1.0 - gamma.detach())), batch_size)
 
 	total_loss = intra_loss + inter_loss
 	r_total_loss = r_intra_loss + r_inter_loss
@@ -104,11 +104,11 @@ def compute_outer_ub_loss(pred, target, prior, collision):
 
 	batch_size = target.size()[0]
 
-	r_intra_ub_loss = torch.sum(collision * intra_ub_loss) / batch_size
-	r_inter_ub_loss = torch.sum(collision * inter_ub_loss) / batch_size
+	r_intra_ub_loss = torch.div(torch.sum(collision * intra_ub_loss), batch_size)
+	r_inter_ub_loss = torch.div(torch.sum(collision * inter_ub_loss), batch_size)
 
-	intra_ub_loss = torch.sum(intra_ub_loss) / batch_size
-	inter_ub_loss = torch.sum(inter_ub_loss) / batch_size
+	intra_ub_loss = torch.div(torch.sum(intra_ub_loss), batch_size)
+	inter_ub_loss = torch.div(torch.sum(inter_ub_loss), batch_size)
 
 	total_ub_loss = intra_ub_loss + inter_ub_loss
 	r_total_ub_loss = r_intra_ub_loss + r_inter_ub_loss
@@ -161,6 +161,10 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	r_other_losses = torch.stack((r_total_loss, r_intra_loss, r_inter_loss))
 	r_other_ub_losses = torch.stack((r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss))
 
+	# delete used variables to save memory space
+	del intra_loss, inter_loss, r_intra_loss, r_inter_loss
+	del r_intra_ub_loss, r_inter_ub_loss, intra_ub_loss, inter_ub_loss
+
 	return total_loss, total_ub_loss, r_total_loss, r_total_ub_loss, theta, pred, gamma, other_losses, \
 	       other_ub_losses, r_other_losses, r_other_ub_losses
 
@@ -187,6 +191,9 @@ def nem_iterations(input_data, target_data, nem_model, optimizer, collisions=Non
 	loss_step_weights = [1.0] * args.nr_steps
 
 	for t, loss_weight in enumerate(loss_step_weights):
+		if use_gpu:
+			torch.cuda.empty_cache()
+
 		# model should predict the next frame
 		inputs = (input_data[t], target_data[t + 1])
 
@@ -226,6 +233,8 @@ def nem_iterations(input_data, target_data, nem_model, optimizer, collisions=Non
 
 		# delete used variables to save memory space
 		del theta, pred, gamma
+		del intra_loss, inter_loss, r_intra_loss, r_inter_loss
+		del r_intra_ub_loss, r_inter_ub_loss, intra_ub_loss, inter_ub_loss
 
 		if t % args.step_log_per_iter == 0:
 			print("Step [{}/{}], Loss: {:.4f}".format(t, args.nr_steps, total_loss))
@@ -253,10 +262,10 @@ def nem_iterations(input_data, target_data, nem_model, optimizer, collisions=Non
 	r_total_ub_loss = torch.sum(torch.stack(r_total_ub_losses)) / np.sum(loss_step_weights)
 
 	return total_loss, total_ub_loss, r_total_loss, r_total_ub_loss, thetas, preds, gammas, other_losses, \
-	       other_ub_losses, r_other_losses, r_other_ub_losses, nem_model
+	       other_ub_losses, r_other_losses, r_other_ub_losses
 
 
-def run_epoch(nem_model, optimizer, dataloader, train=True):
+def run_epoch(epoch, nem_model, optimizer, dataloader, train=True):
 	# adjust mode
 	if train:
 		nem_model.train()
@@ -307,6 +316,11 @@ def run_epoch(nem_model, optimizer, dataloader, train=True):
 			# other relational losses (and upperbound)
 			r_others.append(out[6].data.cpu().numpy())
 			r_others_ub.append(out[7].data.cpu().numpy())
+
+			if epoch % args.log_per_iter == 0 and i % args.log_per_batch == 0:
+				print("Epoch [{}] Batch [{}], Loss: {:.4f}".format(epoch, i, losses[-1]))
+				torch.save(nem_model.state_dict(),
+						   os.path.abspath(os.path.join(args.save_dir, 'epoch_{}_batch_{}.pth'.format(epoch, i))))
 
 	else:
 		# disable autograd if eval
@@ -602,7 +616,7 @@ def run_from_file():
 		# produce print-out
 		print("\n" + 50 * "%" + "    EPOCH {}   ".format(epoch) + 50 * "%")
 
-		log_dict = run_epoch(model, optimizer, inputs_loader, train=False)
+		log_dict = run_epoch(epoch, model, optimizer, inputs_loader, train=False)
 
 		log_log_dict('test', log_dict)
 		print("=" * 10, "Eval", "=" * 10)
@@ -661,14 +675,14 @@ def run():
 		print("\n" + 50 * "%" + "    EPOCH {}   ".format(epoch) + 50 * "%")
 
 		# run train epoch
-		log_dict = run_epoch(train_model, optimizer, train_dataloader, train=True)
+		log_dict = run_epoch(epoch, train_model, optimizer, train_dataloader, train=True)
 
 		log_log_dict('training', log_dict)
 		print("=" * 10, "Train", "=" * 10)
 		print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights)
 
 		# run eval epoch
-		log_dict = run_epoch(train_model, optimizer, valid_dataloader, train=False)
+		log_dict = run_epoch(epoch, train_model, optimizer, valid_dataloader, train=False)
 
 		log_log_dict('validation', log_dict)
 		print("=" * 10, "Eval", "=" * 10)
@@ -703,6 +717,7 @@ if __name__ == '__main__':
 	parser.add_argument('--dt', type=int, default=10)
 	parser.add_argument('--noise_type', type=str, default='bitflip')
 	parser.add_argument('--log_per_iter', type=int, default=1)
+	parser.add_argument('--log_per_batch', type=int, default=10)
 	parser.add_argument('--step_log_per_iter', type=int, default=10)
 	parser.add_argument('--k', type=int, default=5)
 	parser.add_argument('--inner_hidden_size', type=int, default=250)

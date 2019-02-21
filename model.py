@@ -119,9 +119,11 @@ class InputWrapper(nn.Module):
 		x, state = self.ln(x, state)
 
 		# apply activation function
-		x, state = self.act(x, state)
+		x_out, state_out = self.act(x, state)
 
-		return x, state
+		# delete used variables to save memory space
+		del x, state
+		return x_out, state_out
 
 
 class OutputWrapper(nn.Module):
@@ -152,12 +154,16 @@ class OutputWrapper(nn.Module):
 
 			projected = self.main_layer(resized)
 
+			del resized
+
 			# since output size for Conv2D layer is (B, C, H, W),
 			# reshape "projected" back to (B, W, H, C)
 			projected = projected.permute(0, 3, 2, 1)
 		else:
 			# Linear
 			projected = self.main_layer(x)
+
+		del x
 
 		if self.ln:
 			# apply layer norm
@@ -336,9 +342,11 @@ class EncoderLayer(nn.Module):
 		x, state = self.reshape2(x, state)
 
 		# linear layer
-		x, state = self.fc1(x, state)
+		x_out, state_out = self.fc1(x, state)
 
-		return x, state
+		# delete used variables to save memory space
+		del x, state
+		return x_out, state_out
 
 
 class DecoderLayer(nn.Module):
@@ -362,9 +370,11 @@ class DecoderLayer(nn.Module):
 		x, state = self.r_conv1(x, state)
 		x, state = self.r_conv2(x, state)
 		x, state = self.r_conv3(x, state)
-		x, state = self.reshape2(x, state)
+		x_out, state_out = self.reshape2(x, state)
 
-		return x, state
+		# delete used variables to save memory space
+		del x, state
+		return x_out, state_out
 
 
 class RecurrentLayer(nn.Module):
@@ -379,9 +389,11 @@ class RecurrentLayer(nn.Module):
 		x, state = self.r_nem(x, state)
 		x, state = self.layer_norm(x, state)
 		x, state = self.act1(x, state)
-		x, state = self.act2(x, state)
+		x_out, state_out = self.act2(x, state)
 
-		return x, state
+		# delete used variables to save memory space
+		del x, state
+		return x_out, state_out
 
 
 class InnerRNN(nn.Module):
@@ -407,6 +419,8 @@ class InnerRNN(nn.Module):
 	def forward(self, x, state):
 		x, state = self.encoder(x, state)
 		x, state = self.recurrent(x, state)
-		x, state = self.decoder(x, state)
+		x_out, state_out = self.decoder(x, state)
 
-		return x, state
+		# delete used variables to save memory space
+		del x, state
+		return x_out, state_out
