@@ -455,7 +455,7 @@ def rollout_from_file():
 	assert args.saved_model != None and args.saved_model != "", "Please provide a pre-trained model"
 	saved_model_path = os.path.join(args.save_dir, args.saved_model)
 	assert os.path.isfile(saved_model_path), "Path to model does not exist"
-	model.load_state_dict(torch.load(saved_model_path))
+	model.load_state_dict(torch.load(saved_model_path, map_location=lambda storage, loc: storage))
 
 	# set up data
 	inputs = Data(args.data_name, "test", args.batch_size, nr_iters, attribute_list)
