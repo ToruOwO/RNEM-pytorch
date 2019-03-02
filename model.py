@@ -17,77 +17,14 @@ ACTIVATION_FUNCTIONS = {
 }
 
 
-class ReshapeWrapper(nn.Module):
-	"""
-	Reshape input Tensor to a given shape.
+def reshape(shape, x):
+	batch_size = x.size()[0]
 
-	:param: shape - Torch.size
-	:param: apply_to - whether apply to x or state in __call__
-	"""
-
-	def __init__(self, shape, apply_to):
-		super(ReshapeWrapper, self).__init__()
-		self.shape = shape
-		self.apply_to = apply_to
-
-	def forward(self, x, state):
-		batch_size = x.size()[0]
-
-		if self.apply_to == "x":
-			if self.shape == -1:
-				x = x.view(batch_size, -1)
-			else:
-				reshape_size = (batch_size,) + self.shape
-				x = x.view(reshape_size)
-			return x, state
-
-		elif self.apply_to == "state":
-			if self.shape == -1:
-				state = state.view(batch_size, -1)
-			else:
-				reshape_size = (batch_size,) + self.shape
-				state = state.view(reshape_size)
-			return x, state
-
-		else:
-			raise ValueError("Unknown apply_to: {}".format(self.apply_to))
-
-
-class ActivationFunctionWrapper(nn.Module):
-	def __init__(self, activation="linear", apply_to="x"):
-		super(ActivationFunctionWrapper, self).__init__()
-		self.activation = ACTIVATION_FUNCTIONS[activation]
-		self.apply_to = apply_to
-
-	def forward(self, x, state):
-		if self.apply_to == "x":
-			x = self.activation(x)
-			return x, state
-
-		elif self.apply_to == "state":
-			state = self.activation(state)
-			return x, state
-
-		else:
-			raise ValueError("Unknown apply_to: {}".format(self.apply_to))
-
-
-class LayerNormWrapper(nn.Module):
-	def __init__(self, apply_to="x"):
-		super(LayerNormWrapper, self).__init__()
-		self.apply_to = apply_to
-
-	def forward(self, x, state):
-		if self.apply_to == "x":
-			x = F.layer_norm(x, x.size()[1:])
-			return x, state
-
-		elif self.apply_to == "state":
-			state = F.layer_norm(state, state.size()[1:])
-			return x, state
-
-		else:
-			raise ValueError("Unknown apply_to: {}".format(self.apply_to))
+	if shape == -1:
+		return x.view(batch_size, -1)
+	else:
+		reshape_size = (batch_size,) + shape
+		return x.view(reshape_size)
 
 
 class InputWrapper(nn.Module):
@@ -98,9 +35,6 @@ class InputWrapper(nn.Module):
 			self.main_layer = nn.Conv2d(input_size[-1], output_size, kernel_size=4, stride=2, padding=1)
 		else:
 			self.main_layer = nn.Linear(input_size[-1], fc_output_size)
-
-		self.ln = LayerNormWrapper(apply_to="x")
-		self.act = ActivationFunctionWrapper("elu", apply_to="x")
 
 	def forward(self, x, state):
 		# apply main layer to only input (x)
@@ -115,15 +49,15 @@ class InputWrapper(nn.Module):
 		# reshape output back to (B, W, H, C)
 		x = x.permute(reshape_dim)
 
+		del reshape_dim
+
 		# apply layer norm
-		x, state = self.ln(x, state)
+		x = F.layer_norm(x, x.size()[1:])
 
 		# apply activation function
-		x_out, state_out = self.act(x, state)
+		x = ACTIVATION_FUNCTIONS["elu"](x)
 
-		# delete used variables to save memory space
-		del x, state
-		return x_out, state_out
+		return x, state
 
 
 class OutputWrapper(nn.Module):
@@ -137,11 +71,7 @@ class OutputWrapper(nn.Module):
 		else:
 			self.main_layer = nn.Linear(input_size[-1], fc_output_size)
 
-		self.ln = None
-		if layer_norm is True:
-			self.ln = LayerNormWrapper(apply_to="x")
-
-		self.act = ActivationFunctionWrapper(activation, apply_to="x")
+		self.ln = layer_norm
 
 	def forward(self, x, state):
 		# apply main layer
@@ -167,10 +97,10 @@ class OutputWrapper(nn.Module):
 
 		if self.ln:
 			# apply layer norm
-			projected, state = self.ln(projected, state)
+			projected = F.layer_norm(projected, projected.size()[1:])
 
 		# apply activation function
-		projected, state = self.act(projected, state)
+		projected = ACTIVATION_FUNCTIONS["elu"](projected)
 
 		return projected, state
 
@@ -319,19 +249,18 @@ class EncoderLayer(nn.Module):
 	def __init__(self, batch_size, k, input_size, device='cpu'):
 		super(EncoderLayer, self).__init__()
 		self.device = device
+		self.input_size = input_size
 
 		W, H, C = input_size
 
-		self.reshape1 = ReshapeWrapper(input_size, apply_to="x")
 		self.conv1 = InputWrapper((batch_size * k, W, H, 1), output_size=16).to(device)
 		self.conv2 = InputWrapper((batch_size * k, W // 2, H // 2, 16), output_size=32).to(device)
 		self.conv3 = InputWrapper((batch_size * k, W // 4, H // 4, 32), output_size=64).to(device)
-		self.reshape2 = ReshapeWrapper(-1, apply_to="x")
 		self.fc1 = InputWrapper((batch_size * k, W * H), fc_output_size=512).to(device)
 
 	def forward(self, x, state):
 		# reshape the input to (64, 64, 1)
-		x, state = self.reshape1(x, state)
+		x = reshape(self.input_size, x)
 
 		# normal convolution
 		x, state = self.conv1(x, state)
@@ -339,14 +268,12 @@ class EncoderLayer(nn.Module):
 		x, state = self.conv3(x, state)
 
 		# flatten input
-		x, state = self.reshape2(x, state)
+		x = reshape(-1, x)
 
 		# linear layer
-		x_out, state_out = self.fc1(x, state)
+		x, state = self.fc1(x, state)
 
-		# delete used variables to save memory space
-		del x, state
-		return x_out, state_out
+		return x, state
 
 
 class DecoderLayer(nn.Module):
@@ -356,44 +283,34 @@ class DecoderLayer(nn.Module):
 
 		self.fc1 = OutputWrapper((batch_size * k, hidden_size), fc_output_size=512).to(device)
 		self.fc2 = OutputWrapper((batch_size * k, 512), fc_output_size=W * H).to(device)
-		self.reshape1 = ReshapeWrapper((8, 8, 64), apply_to="x")
 		self.r_conv1 = OutputWrapper((batch_size * k, 8, 8, 64), output_size=32).to(device)
 		self.r_conv2 = OutputWrapper((batch_size * k, 16, 16, 32), output_size=16).to(device)
 		self.r_conv3 = OutputWrapper((batch_size * k, 32, 32, 16), output_size=1, activation="sigmoid",
 		                             layer_norm=False).to(device)
-		self.reshape2 = ReshapeWrapper(-1, apply_to="x")
 
 	def forward(self, x, state):
 		x, state = self.fc1(x, state)
 		x, state = self.fc2(x, state)
-		x, state = self.reshape1(x, state)
+		x = reshape((8, 8, 64), x)
 		x, state = self.r_conv1(x, state)
 		x, state = self.r_conv2(x, state)
 		x, state = self.r_conv3(x, state)
-		x_out, state_out = self.reshape2(x, state)
+		x = reshape(-1, x)
 
-		# delete used variables to save memory space
-		del x, state
-		return x_out, state_out
+		return x, state
 
 
 class RecurrentLayer(nn.Module):
 	def __init__(self, k, hidden_size, device='cpu'):
 		super(RecurrentLayer, self).__init__()
 		self.r_nem = R_NEM(k, fc_size=hidden_size, device=device)
-		self.layer_norm = LayerNormWrapper(apply_to="x")
-		self.act1 = ActivationFunctionWrapper("sigmoid", apply_to="state")
-		self.act2 = ActivationFunctionWrapper("sigmoid", apply_to="x")
 
 	def forward(self, x, state):
 		x, state = self.r_nem(x, state)
-		x, state = self.layer_norm(x, state)
-		x, state = self.act1(x, state)
-		x_out, state_out = self.act2(x, state)
-
-		# delete used variables to save memory space
-		del x, state
-		return x_out, state_out
+		x = F.layer_norm(x, x.size()[1:])
+		x = ACTIVATION_FUNCTIONS["sigmoid"](x)
+		state = ACTIVATION_FUNCTIONS["sigmoid"](state)
+		return x, state
 
 
 class InnerRNN(nn.Module):

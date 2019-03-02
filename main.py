@@ -94,7 +94,7 @@ def compute_outer_ub_loss(pred, target, prior, collision):
 	max_pred = torch.unsqueeze(max_pred, 1)
 
 	# use binomial cross entropy as intra loss
-	intra_criterion = nn.BCELoss().to(device)
+	intra_criterion = BCELoss().to(device)
 
 	# use KL divergence as inter loss
 	inter_criterion = KLDivLoss().to(device)
