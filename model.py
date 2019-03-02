@@ -3,19 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# dict of activation functions
-ACTIVATION_FUNCTIONS = {
-	'sigmoid': torch.sigmoid,
-	'tanh': F.tanh,
-	'relu': F.relu,
-	'elu': F.elu,
-	'linear': lambda x: x,
-	'exp': lambda x: torch.exp(x),
-	'softplus': F.softplus,
-	'clip': lambda x: torch.clamp(x, min=-1., max=1.),
-	'clip_low': lambda x: torch.clamp(x, min=-1., max=1e6)
-}
-
 
 def reshape(shape, x):
 	batch_size = x.size()[0]
@@ -36,6 +23,8 @@ class InputWrapper(nn.Module):
 		else:
 			self.main_layer = nn.Linear(input_size[-1], fc_output_size)
 
+		self.act = nn.ELU()
+
 	def forward(self, x, state):
 		# apply main layer to only input (x)
 
@@ -55,7 +44,7 @@ class InputWrapper(nn.Module):
 		x = F.layer_norm(x, x.size()[1:])
 
 		# apply activation function
-		x = ACTIVATION_FUNCTIONS["elu"](x)
+		x = self.act(x)
 
 		return x, state
 
@@ -72,6 +61,11 @@ class OutputWrapper(nn.Module):
 			self.main_layer = nn.Linear(input_size[-1], fc_output_size)
 
 		self.ln = layer_norm
+
+		if activation == "relu":
+			self.act = nn.ReLU()
+		elif activation == "sigmoid":
+			self.act = nn.Sigmoid()
 
 	def forward(self, x, state):
 		# apply main layer
@@ -100,7 +94,7 @@ class OutputWrapper(nn.Module):
 			projected = F.layer_norm(projected, projected.size()[1:])
 
 		# apply activation function
-		projected = ACTIVATION_FUNCTIONS["elu"](projected)
+		projected = self.act(projected)
 
 		return projected, state
 
@@ -304,12 +298,13 @@ class RecurrentLayer(nn.Module):
 	def __init__(self, k, hidden_size, device='cpu'):
 		super(RecurrentLayer, self).__init__()
 		self.r_nem = R_NEM(k, fc_size=hidden_size, device=device)
+		self.act = nn.Sigmoid()
 
 	def forward(self, x, state):
 		x, state = self.r_nem(x, state)
 		x = F.layer_norm(x, x.size()[1:])
-		x = ACTIVATION_FUNCTIONS["sigmoid"](x)
-		state = ACTIVATION_FUNCTIONS["sigmoid"](state)
+		x = self.act(x)
+		state = self.act(state)
 		return x, state
 
 
