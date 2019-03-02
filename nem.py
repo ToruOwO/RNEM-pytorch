@@ -107,6 +107,10 @@ class NEM(nn.Module):
 		:return: local loss (B, K, W, H, 1)
 		"""
 		loss = data * predictions + (1 - data) * (1 - predictions)
+
+		# sum loss over channels
+		loss = torch.sum(loss, 4, keepdim=True)
+
 		if epsilon > 0:
 			loss += epsilon
 		return loss
