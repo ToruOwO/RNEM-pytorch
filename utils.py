@@ -206,6 +206,7 @@ def show_image(t, b, k):
 	pil = torchvision.transforms.ToPILImage()
 	im = pil(d)
 	im.show()
+	im.save("test_{}_{}.jpg".format(b, k), "JPEG")
 
 
 class BCELoss(nn.Module):

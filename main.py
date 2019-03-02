@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 import utils
 from data import Data, collate
 from nem import NEM
-from utils import BCELoss, KLDivLoss
+from utils import BCELoss, KLDivLoss, show_image
 
 # Device configuration
 use_gpu = None
@@ -23,7 +23,7 @@ args = None
 
 ### helper functions
 
-def add_noise(data, noise_type=None, noise_prob=0.2):
+def add_noise(data, noise_type='bitflip', noise_prob=0.2):
 	"""
 	Add noise to the input image to avoid trivial solutions
 	in case of overcapacity.
@@ -239,28 +239,22 @@ def nem_iterations(input_data, target_data, nem_model, optimizer, collisions=Non
 		if t % args.step_log_per_iter == 0:
 			print("Step [{}/{}], Loss: {:.4f}".format(t, args.nr_steps, total_loss))
 
-		if train:
-			# backward pass and optimize
-			optimizer.zero_grad()
-			total_loss.backward(retain_graph=True)
-			optimizer.step()
-
 	# collect outputs
 	thetas, preds, gammas = zip(*outputs)
 	thetas = torch.stack(thetas)
 	preds = torch.stack(preds)
 	gammas = torch.stack(gammas)
 
-	# collect outputs for graph drawing
-	outputs = {
-		'inputs': target_data,
-		'corrupted': input_data,
-		'gammas': gammas,
-		'preds': preds,
-	}
-
-	idx = [0, 1, 2]  # sample ids to generate plots
-	create_rollout_plots('training', outputs, idx)
+	# # collect outputs for graph drawing
+	# outputs = {
+	# 	'inputs': target_data.cpu(),
+	# 	'corrupted': input_data.cpu(),
+	# 	'gammas': gammas.cpu(),
+	# 	'preds': preds.cpu(),
+	# }
+	#
+	# idx = [0, 1, 2]  # sample ids to generate plots
+	# create_rollout_plots('training', outputs, idx)
 
 	other_losses = torch.stack(other_losses)
 	other_ub_losses = torch.stack(other_ub_losses)
@@ -271,6 +265,12 @@ def nem_iterations(input_data, target_data, nem_model, optimizer, collisions=Non
 	total_ub_loss = torch.sum(torch.stack(total_ub_losses)) / np.sum(loss_step_weights)
 	r_total_loss = torch.sum(torch.stack(r_total_losses)) / np.sum(loss_step_weights)
 	r_total_ub_loss = torch.sum(torch.stack(r_total_ub_losses)) / np.sum(loss_step_weights)
+
+	if train:
+		# backward pass and optimize
+		optimizer.zero_grad()
+		total_loss.backward()
+		optimizer.step()
 
 	return total_loss, total_ub_loss, r_total_loss, r_total_ub_loss, thetas, preds, gammas, other_losses, \
 	       other_ub_losses, r_other_losses, r_other_ub_losses
@@ -300,13 +300,16 @@ def run_epoch(epoch, nem_model, optimizer, dataloader, train=True):
 			groups = data[0]['groups'] if 'groups' in data[0] else None
 			collisions = data[0]['collision'] if 'collisions' in data[0] else None
 			
-			features = features.to(device)
+			features = features.to(device)   # (T, B, K, W, H, C)
 			if groups is not None:
 				groups = groups.to(device)
 			if collisions is not None:
 				collisions = collisions.to(device)
 
-			features_corrupted = add_noise(features)
+			features_corrupted = add_noise(features)   # (T, B, K, W, H, C)
+
+			# show_image(features[0].cpu(), 0, 0)
+			# show_image(features_corrupted[0].cpu(), 0, 0)
 
 			t1 = time.time()
 			out = nem_iterations(features_corrupted, features, nem_model, optimizer)
