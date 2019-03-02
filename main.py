@@ -686,17 +686,17 @@ def run():
 		print("\n" + 50 * "%" + "    EPOCH {}   ".format(epoch) + 50 * "%")
 
 		# run train epoch
+		print("=" * 10, "Train", "=" * 10)
 		log_dict = run_epoch(epoch, train_model, optimizer, train_dataloader, train=True)
 
 		log_log_dict('training', log_dict)
-		print("=" * 10, "Train", "=" * 10)
 		print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights)
 
 		# run eval epoch
+		print("=" * 10, "Eval", "=" * 10)
 		log_dict = run_epoch(epoch, train_model, optimizer, valid_dataloader, train=False)
 
 		log_log_dict('validation', log_dict)
-		print("=" * 10, "Eval", "=" * 10)
 		print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights)
 
 		if log_dict['loss'] < best_valid_loss:

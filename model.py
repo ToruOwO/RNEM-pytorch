@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 # dict of activation functions
 ACTIVATION_FUNCTIONS = {
-	'sigmoid': F.sigmoid,
+	'sigmoid': torch.sigmoid,
 	'tanh': F.tanh,
 	'relu': F.relu,
 	'elu': F.elu,
