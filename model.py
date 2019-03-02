@@ -150,7 +150,7 @@ class OutputWrapper(nn.Module):
 			# since input size for Conv2D layer is (B, C, H, W),
 			# reshape "resized" from (B, W, H, C) to (B, C, W, H)
 			resized = x.permute(0, 3, 2, 1)
-			resized = F.interpolate(resized, (4 * x.size()[1], 4 * x.size()[2]), mode="bilinear")
+			resized = F.interpolate(resized, (4 * x.size()[1], 4 * x.size()[2]), mode="nearest")
 
 			projected = self.main_layer(resized)
 
