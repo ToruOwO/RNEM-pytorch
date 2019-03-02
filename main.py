@@ -251,6 +251,17 @@ def nem_iterations(input_data, target_data, nem_model, optimizer, collisions=Non
 	preds = torch.stack(preds)
 	gammas = torch.stack(gammas)
 
+	# collect outputs for graph drawing
+	outputs = {
+		'inputs': target_data,
+		'corrupted': input_data,
+		'gammas': gammas,
+		'preds': preds,
+	}
+
+	idx = [0, 1, 2]  # sample ids to generate plots
+	create_rollout_plots('training', outputs, idx)
+
 	other_losses = torch.stack(other_losses)
 	other_ub_losses = torch.stack(other_ub_losses)
 	r_other_losses = torch.stack(r_other_losses)
@@ -433,7 +444,7 @@ def create_rollout_plots(name, outputs, idx):
 		fig.savefig(os.path.join(args.log_dir, name + '_{}.png'.format(nr)), bbox_inches='tight', pad_inches=0)
 		plt.close(fig)
 
-		utils.overview_gif('rollout', nr, args.nr_steps, args.rollout_steps, **outputs)
+		utils.overview_gif(name, nr, args.nr_steps, args.rollout_steps, **outputs)
 
 
 ### Main functions
