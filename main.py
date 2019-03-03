@@ -136,12 +136,19 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	# convert to cuda tensor on GPU
 	prior = compute_bernoulli_prior()
 
+	# ensure type coherence
+	input_data = input_data.to(device)
+	target_data = target_data.to(device)
+	h_old = h_old.to(device)
+	preds_old = preds_old.to(device)
+	gamma_old = gamma_old.to(device)
+
 	# compute inputs for dynamic iterations
 	inputs = (input_data, target_data)
 	hidden_state = (h_old, preds_old, gamma_old)
 
 	# run hidden network
-	hidden_state, output = nem_model(inputs, hidden_state)
+	hidden_state, output = nem_model.forward(inputs, hidden_state)
 	theta, pred, gamma = output
 
 	# set collision
@@ -162,6 +169,7 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	r_other_ub_losses = torch.stack((r_total_ub_loss, r_intra_ub_loss, r_inter_ub_loss))
 
 	# delete used variables to save memory space
+	del input_data, target_data, h_old, preds_old, gamma_old
 	del intra_loss, inter_loss, r_intra_loss, r_inter_loss
 	del r_intra_ub_loss, r_inter_ub_loss, intra_ub_loss, inter_ub_loss
 
@@ -458,10 +466,18 @@ def rollout_from_file():
 	attribute_list = ('features', 'groups')
 	nr_iters = args.nr_steps + args.rollout_steps + 1
 
+	# set up data
+	inputs = Data(args.data_name, "test", args.batch_size, nr_iters, attribute_list)
+	input_dataloader = DataLoader(dataset=inputs, batch_size=1, shuffle=False, num_workers=1, collate_fn=collate)
+
+	# get dimensions of data
+	input_shape = inputs.data["features"].shape
+	W, H, C = list(input_shape)[-3:]
+
 	# set up model
 	model = NEM(batch_size=args.batch_size,
 	            k=args.k,
-	            input_size=(64, 64, 1),
+	            input_size=(W, H, C),
 	            hidden_size=args.inner_hidden_size,
 	            device=device).to(device)
 
@@ -469,11 +485,7 @@ def rollout_from_file():
 	assert args.saved_model != None and args.saved_model != "", "Please provide a pre-trained model"
 	saved_model_path = os.path.join(args.save_dir, args.saved_model)
 	assert os.path.isfile(saved_model_path), "Path to model does not exist"
-	model.load_state_dict(torch.load(saved_model_path, map_location=lambda storage, loc: storage))
-
-	# set up data
-	inputs = Data(args.data_name, "test", args.batch_size, nr_iters, attribute_list)
-	input_dataloader = DataLoader(dataset=inputs, batch_size=1, shuffle=False, num_workers=1, collate_fn=collate)
+	model.load_state_dict(torch.load(saved_model_path, map_location='cpu'))
 
 	# create empty lists to record losses
 	losses, ub_losses, r_losses, r_ub_losses, others, others_ub, r_others, r_others_ub = [], [], [], [], [], [], [], []
@@ -486,11 +498,14 @@ def rollout_from_file():
 		input_data = data[0]
 
 		# initialize RNN hidden state, prediction and gamma
-		theta = torch.zeros(args.batch_size * args.k, 250)
-		pred = torch.ones(args.batch_size, args.k, 64, 64, 1)  # (B, K, W, H, C)
-		gamma = np.abs(np.random.randn(args.batch_size, args.k, 64, 64, 1))  # (B, K, W, H, 1)
+		theta = torch.zeros(args.batch_size * args.k, args.inner_hidden_size)
+		pred = torch.zeros(args.batch_size, args.k, W, H, C)  # (B, K, W, H, C)
+		gamma = np.abs(np.random.randn(args.batch_size, args.k, W, H, C))  # (B, K, W, H, 1)
 		gamma /= np.sum(gamma, axis=1, keepdims=True)
 		gamma = torch.from_numpy(gamma).float()
+
+		if args.k == 1:
+			gamma = torch.ones_like(gamma)
 
 		corrupted, scores, gammas, thetas, preds = [], [], [gamma], [theta], [pred]
 
@@ -518,6 +533,8 @@ def rollout_from_file():
 			else:
 				# rollout
 				input = torch.sum(gamma * pred, 1, keepdim=True)
+
+			input = input.to(device)
 
 			# run forward process
 			input_corrupted = add_noise(input)
