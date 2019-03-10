@@ -222,9 +222,6 @@ def nem_iterations(input_data, target_data, nem_model, optimizer, collisions=Non
 	loss_step_weights = [1.0] * args.nr_steps
 
 	for t, loss_weight in enumerate(loss_step_weights):
-		if use_gpu:
-			torch.cuda.empty_cache()
-
 		# model should predict the next frame
 		inputs = (input_data[t], target_data[t + 1])
 
