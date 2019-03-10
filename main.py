@@ -23,6 +23,18 @@ args = None
 
 ### helper functions
 
+
+# log bci
+def binomial_cross_entropy_loss(y, t):
+	clipped_y = torch.clamp(y, 1e-6, 1. - 1.e-6)
+	return -(t * torch.log(clipped_y) + (1. - t) * torch.log(1. - clipped_y))
+
+
+# compute KL(p1, p2)
+def kl_loss_bernoulli(p1, p2):
+	return p1 * torch.log(torch.clamp(p1 / torch.clamp(p2, 1e-6, 1e6), 1e-6, 1e6)) + (1 - p1) * torch.log(torch.clamp((1-p1)/torch.clamp(1-p2, 1e-6, 1e6), 1e-6, 1e6))
+
+
 def add_noise(data, noise_type='bitflip', noise_prob=0.2):
 	"""
 	Add noise to the input image to avoid trivial solutions
@@ -64,14 +76,17 @@ def compute_bernoulli_prior():
 
 
 def compute_outer_loss(mu, gamma, target, prior, collision):
-	# use binomial cross entropy as intra loss
-	intra_criterion = BCELoss().to(device)
+	# # use binomial cross entropy as intra loss
+	# intra_criterion = BCELoss().to(device)
 
-	# use KL divergence as inter loss
-	inter_criterion = KLDivLoss().to(device)
+	# # use KL divergence as inter loss
+	# inter_criterion = KLDivLoss().to(device)
 
-	intra_loss = intra_criterion(mu, target, use_gpu=use_gpu)
-	inter_loss = inter_criterion(prior, mu, use_gpu=use_gpu)
+	# intra_loss = intra_criterion(mu, target, use_gpu=use_gpu)
+	# inter_loss = inter_criterion(prior, mu, use_gpu=use_gpu)
+
+	intra_loss = binomial_cross_entropy_loss(mu, target)
+	inter_loss = kl_loss_bernoulli(prior, mu)
 
 	batch_size = target.size()[0]
 
@@ -174,7 +189,7 @@ def dynamic_nem_iterations(input_data, target_data, h_old, preds_old, gamma_old,
 	del r_intra_ub_loss, r_inter_ub_loss, intra_ub_loss, inter_ub_loss
 
 	return total_loss, total_ub_loss, r_total_loss, r_total_ub_loss, theta, pred, gamma, other_losses, \
-	       other_ub_losses, r_other_losses, r_other_ub_losses
+		   other_ub_losses, r_other_losses, r_other_ub_losses
 
 
 def nem_iterations(input_data, target_data, nem_model, optimizer, collisions=None, train=True):
@@ -281,7 +296,7 @@ def nem_iterations(input_data, target_data, nem_model, optimizer, collisions=Non
 		optimizer.step()
 
 	return total_loss, total_ub_loss, r_total_loss, r_total_ub_loss, thetas, preds, gammas, other_losses, \
-	       other_ub_losses, r_other_losses, r_other_ub_losses
+		   other_ub_losses, r_other_losses, r_other_ub_losses
 
 
 def run_epoch(epoch, nem_model, optimizer, dataloader, train=True):
@@ -422,24 +437,24 @@ def print_log_dict(log_dict, s_loss_weights, dt_s_loss_weights):
 
 	try:
 		print("    other losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
-		                                               (other_losses[:, i].sum(0) / s_loss_weights,
-		                                                other_ub_losses[:, i].sum(0) / s_loss_weights)
-		                                               for i in range(len(other_losses[0]))])))
+													   (other_losses[:, i].sum(0) / s_loss_weights,
+														other_ub_losses[:, i].sum(0) / s_loss_weights)
+													   for i in range(len(other_losses[0]))])))
 
 		print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
-		                                                            (other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
-		                                                             other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
-		                                                            for i in range(len(other_losses[0]))])))
+																	(other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
+																	 other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
+																	for i in range(len(other_losses[0]))])))
 
 		print("    other relational losses: {}".format(", ".join(["%.2f (UB: %.2f)" %
-		                                                          (r_other_losses[:, i].sum(0) / s_loss_weights,
-		                                                           r_other_ub_losses[:, i].sum(0) / s_loss_weights)
-		                                                          for i in range(len(r_other_losses[0]))])))
+																  (r_other_losses[:, i].sum(0) / s_loss_weights,
+																   r_other_ub_losses[:, i].sum(0) / s_loss_weights)
+																  for i in range(len(r_other_losses[0]))])))
 
 		print("        last {} steps avg: {}".format(dt, ", ".join(["%.2f (UB: %.2f)" %
-		                                                            (r_other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
-		                                                             r_other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
-		                                                            for i in range(len(r_other_losses[0]))])))
+																	(r_other_losses[-dt:, i].sum(0) / dt_s_loss_weights,
+																	 r_other_ub_losses[-dt:, i].sum(0) / dt_s_loss_weights)
+																	for i in range(len(r_other_losses[0]))])))
 	except:
 		pass
 
@@ -476,10 +491,10 @@ def rollout_from_file():
 
 	# set up model
 	model = NEM(batch_size=args.batch_size,
-	            k=args.k,
-	            input_size=(W, H, C),
-	            hidden_size=args.inner_hidden_size,
-	            device=device).to(device)
+				k=args.k,
+				input_size=(W, H, C),
+				hidden_size=args.inner_hidden_size,
+				device=device).to(device)
 
 	# a model must be provided in order to rollout from file
 	assert args.saved_model != None and args.saved_model != "", "Please provide a pre-trained model"
@@ -541,12 +556,12 @@ def rollout_from_file():
 
 			loss, ub_loss, r_loss, r_ub_loss, theta, pred, gamma, other_losses, other_ub_losses, \
 			r_other_losses, r_other_ub_losses = dynamic_nem_iterations(input_data=input_corrupted,
-			                                                           target_data=input_data['features'][t + 1],
-			                                                           gamma_old=gamma,
-			                                                           h_old=theta,
-			                                                           preds_old=pred,
-			                                                           nem_model=model,
-			                                                           collisions=collisions)
+																	   target_data=input_data['features'][t + 1],
+																	   gamma_old=gamma,
+																	   h_old=theta,
+																	   preds_old=pred,
+																	   nem_model=model,
+																	   collisions=collisions)
 
 			# re-compute gamma if rollout
 			if t >= args.nr_steps:
@@ -624,10 +639,10 @@ def run_from_file():
 
 	# set up model
 	model = NEM(batch_size=args.batch_size,
-	            k=args.k,
-	            input_size=(64, 64, 1),
-	            hidden_size=args.inner_hidden_size,
-	            device=device).to(device)
+				k=args.k,
+				input_size=(64, 64, 1),
+				hidden_size=args.inner_hidden_size,
+				device=device).to(device)
 
 	# a model must be provided in order to run from file
 	assert args.saved_model != None and args.saved_model != "", "Please provide a pre-trained model"
@@ -679,10 +694,10 @@ def run():
 
 	# set up model
 	train_model = NEM(batch_size=args.batch_size,
-	                  k=args.k,
-	                  input_size=(W, H, C),
-	                  hidden_size=args.inner_hidden_size,
-	                  device=device).to(device)
+					  k=args.k,
+					  input_size=(W, H, C),
+					  hidden_size=args.inner_hidden_size,
+					  device=device).to(device)
 
 	if args.saved_model != None and args.saved_model != "":
 		# load trained NEM model if exists
@@ -729,7 +744,7 @@ def run():
 		if epoch % args.log_per_iter == 0:
 			print("Epoch [{}/{}], Loss: {:.4f}".format(epoch, args.max_epoch, log_dict['loss']))
 			torch.save(train_model.state_dict(),
-			           os.path.abspath(os.path.join(args.save_dir, 'epoch_{}.pth'.format(epoch))))
+					   os.path.abspath(os.path.join(args.save_dir, 'epoch_{}.pth'.format(epoch))))
 
 		if np.isnan(log_dict['loss']):
 			print("Early Stopping because validation loss is nan")
