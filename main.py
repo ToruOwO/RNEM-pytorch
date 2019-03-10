@@ -27,12 +27,20 @@ args = None
 # log bci
 def binomial_cross_entropy_loss(y, t):
 	clipped_y = torch.clamp(y, 1e-6, 1. - 1.e-6)
-	return -(t * torch.log(clipped_y) + (1. - t) * torch.log(1. - clipped_y))
+	res = -(t * torch.log(clipped_y) + (1. - t) * torch.log(1. - clipped_y))
+	if use_gpu:
+		return res.cuda()
+	else:
+		return res
 
 
 # compute KL(p1, p2)
 def kl_loss_bernoulli(p1, p2):
-	return p1 * torch.log(torch.clamp(p1 / torch.clamp(p2, 1e-6, 1e6), 1e-6, 1e6)) + (1 - p1) * torch.log(torch.clamp((1-p1)/torch.clamp(1-p2, 1e-6, 1e6), 1e-6, 1e6))
+	res = p1 * torch.log(torch.clamp(p1 / torch.clamp(p2, 1e-6, 1e6), 1e-6, 1e6)) + (1 - p1) * torch.log(torch.clamp((1-p1)/torch.clamp(1-p2, 1e-6, 1e6), 1e-6, 1e6))
+	if use_gpu:
+		return res.cuda()
+	else:
+		return res
 
 
 def add_noise(data, noise_type='bitflip', noise_prob=0.2):
