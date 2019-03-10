@@ -597,6 +597,10 @@ def rollout_from_file():
 			r_others[-1].append(r_other_losses)
 			r_others_ub[-1].append(r_other_ub_losses)
 
+			# delete used variables to save memory space
+			del input_corrupted
+			del loss, ub_loss, r_loss, r_ub_loss, other_losses, other_ub_losses, r_other_losses, r_other_ub_losses
+
 		# collect outputs for graph drawing
 		outputs = {
 			'inputs': input_data['features'],
