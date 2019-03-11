@@ -205,7 +205,7 @@ def nem_iterations(input_data, target_data, nem_model, optimizer, collisions=Non
 	prior = compute_bernoulli_prior()
 
 	# output
-	hidden_state = nem_model.init_state(dtype=torch.float32)
+	hidden_state = nem_model.module.init_state(dtype=torch.float32)
 	# hidden_state = (nem_model.h, nem_model.pred, nem_model.gamma)
 	outputs = [hidden_state]
 
