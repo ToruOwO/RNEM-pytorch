@@ -709,9 +709,9 @@ def run():
 					  device=device)
 
 	if use_gpu:
-		model = nn.DataParallel(model)
-		
-	model.to(device)
+		train_model = nn.DataParallel(train_model)
+
+	train_model.to(device)
 
 	if args.saved_model != None and args.saved_model != "":
 		# load trained NEM model if exists
