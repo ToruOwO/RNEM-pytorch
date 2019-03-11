@@ -706,7 +706,12 @@ def run():
 					  k=args.k,
 					  input_size=(W, H, C),
 					  hidden_size=args.inner_hidden_size,
-					  device=device).to(device)
+					  device=device)
+
+	if use_gpu:
+		model = nn.DataParallel(model)
+		
+	model.to(device)
 
 	if args.saved_model != None and args.saved_model != "":
 		# load trained NEM model if exists
