@@ -720,7 +720,7 @@ def run():
 		train_model.load_state_dict(torch.load(saved_model_path))
 
 	# set up optimizer
-	optimizer = torch.optim.Adam(list(train_model.parameters()) + list(train_model.inner_rnn.parameters()), lr=args.lr)
+	optimizer = torch.optim.Adam(list(train_model.parameters()) + list(train_model.module.inner_rnn.parameters()), lr=args.lr)
 
 	# training
 	best_valid_loss = np.inf
