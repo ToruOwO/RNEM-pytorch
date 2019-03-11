@@ -71,7 +71,8 @@ class Data(Dataset):
 
 	def __len__(self):
 		# number of batches
-		return self.limit // self.batch_size - 1
+		# return self.limit // self.batch_size - 1
+		return 5800
 
 
 def collate(batch):
